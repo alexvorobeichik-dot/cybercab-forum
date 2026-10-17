@@ -1,42 +1,124 @@
 # Cybercab Forum
 
-Working local member-forum MVP for teslacybercabforum.com. Independent, not affiliated with Tesla.
+A community forum for the Tesla Cybercab and the wider robotaxi rollout: service
+areas, ride reports, autonomy behaviour, per-mile economics, and depot
+infrastructure.
 
-## Start on this Windows computer
-From this folder run `runtime\python.exe server.py`, then open http://127.0.0.1:8088 . A portable Python 3.13.9 runtime was downloaded from python.org into runtime; no global installation was changed.
+**Live site:** https://teslacybercabforum.com (GitHub Pages, https)
 
-On another system with Python 3.11+ run `python server.py`. No pip packages required.
+Static site. No framework, no bundler, no dependencies, no backend. Open it and
+it works.
 
-## Included
-- SQLite-backed accounts, sessions, discussions and replies
-- scrypt password hashes; HTTP-only same-site session cookies; CSRF checks on authenticated actions; escaped post output
-- Category browsing and search
-- Moderator topic locking and deletion with confirmation
-- Responsive dark interface, guidelines/privacy page and independence disclaimer
-- No fabricated members, posts or activity
+---
 
-The first registered account becomes administrator. Create your own account while the server is still local, before exposing the site publicly. No default password exists.
+## Quick start
 
-## Verification
-Run `runtime\python.exe -m unittest test_forum.py -v` (or `python -m unittest test_forum.py -v`). The integration test uses a temporary database and verifies registration, login/logout, publishing, replies, escaping, CSRF rejection, locking and deletion. It does not populate the real community database.
+**Option 1 — just open it.** Open `index.html` in any modern browser.
 
-## Public deployment: not completed
-The domain returned ERR_SSL_TLSV1_UNRECOGNIZED_NAME during the HTTPS check. No registrar or hosting account was connected. Nothing has been deployed to that domain, and DNS has not been changed.
+**Option 2 — serve it locally.** If you want to test over real HTTP:
 
-This is an MVP, not a hardened public production service. Before inviting members:
-1. Provision a Python host/VPS with persistent disk. This standard-library HTTP server is for local evaluation; use a production server/reverse proxy strategy with process supervision, connection/time limits and request limits.
-2. Run the application as a nonprivileged user bound to localhost. Set PORT if needed. Keep forum.db on persistent storage; back it up securely and test restoration.
-3. Configure a TLS reverse proxy for teslacybercabforum.com and point the domain's DNS to that host. Set FORUM_SECURE=1 so cookies are HTTPS-only; never disable this for public use.
-4. Register your administrator locally before public exposure. Add a real operator contact to the privacy/guidelines page and publish retention, deletion and abuse-reporting procedures appropriate to your jurisdiction.
-5. Add rate limiting and bot/spam controls before enabling public registration. Implement password reset/email verification, account suspension, report handling, per-reply moderation, account deletion and admin recovery. They are not implemented in this MVP.
-6. Review security and trademark/domain risks. The disclaimer does not guarantee the domain is free of trademark issues. Do not present this community as official Tesla support.
-7. Verify HTTPS, cookies, registration, moderation, mobile layouts, backups and recovery on the deployed host before promotion.
+```powershell
+powershell -ExecutionPolicy Bypass -File .\serve.ps1
+```
 
-## Files
-- server.py — application and schema
-- style.css — responsive visual design
-- test_forum.py — end-to-end HTTP integration test
-- forum.db — local data, created on startup; keep private
-- runtime/ — portable Windows Python runtime, not required on a host with Python installed
+Then visit <http://localhost:8080>. Pass `-Port 9000` to use a different port.
 
-Environment variables: HOST (default 127.0.0.1), PORT (8088), FORUM_DB (database path), FORUM_SECURE (set 1 behind production HTTPS).
+---
+
+## Features
+
+- **Eight categories** covering the rollout, from announcements to an off-topic lounge
+- **Threads and replies** — create, read, reply, and delete your own posts
+- **Upvotes** on both threads and replies, tracked per browser
+- **Search** across thread titles, post bodies, and author handles
+- **Member pages** listing threads started and recent replies
+- **Sorting** by latest activity, heat, view count, or unanswered
+- **Responsive dark UI** that works from phone width up to desktop
+- **Accessible touches** — skip link, keyboard `/` to focus search, labelled controls
+
+## Project structure
+
+```
+.
+├── index.html          App shell: header, category bar, view container, sidebar
+├── README.md
+├── serve.ps1           Dependency-free static server (Windows PowerShell)
+├── CNAME               Custom domain for GitHub Pages
+└── assets/
+    ├── styles.css      All styling, design tokens at the top
+    ├── app.js          Router, state, rendering, and event handling
+    └── seed.js         Demo threads and categories loaded on first run
+```
+
+## How it works
+
+Hash-based routing (`#/`, `#/c/news`, `#/t/t1`, `#/new`, `#/search?q=…`) means
+the site needs no server-side rewrite rules, so it works identically from the
+filesystem and from static hosting.
+
+Content lives in browser `localStorage` under the key `cybercab_forum_v1`, and
+your display handle under `cybercab_forum_handle`. First visit seeds the forum
+from `assets/seed.js`; everything after that is yours. If storage is
+unavailable the app falls back to in-memory state for the session and says so in
+the footer.
+
+**Reset demo data** in the footer wipes local storage and reseeds.
+
+## Demo content notice
+
+Every thread, reply, and handle in `assets/seed.js` is **invented development
+data**. It is not scraped, not quoted from real users, and does not represent
+anyone's actual views. Replace it before this is presented as a real community.
+
+## Honest limitations
+
+These are the things standing between this and a real community. They are
+deliberate trade-offs, not oversights.
+
+- **No shared state.** There is no server, so two people on two machines see two
+  separate forums. A visitor who posts from their phone will not see that post
+  on their laptop. This is the single biggest limitation.
+- **No real accounts.** Handles are self-declared, unverified, and there is no
+  password. Anyone can edit local storage and change what they see.
+- **Not indexable.** Because content is client-rendered and per-browser, search
+  engines cannot read threads.
+- **No moderation tooling.** There is nothing to remove spam with, because there
+  is nothing shared to moderate.
+
+## Roadmap
+
+1. Replace the storage layer with a real API so the forum becomes genuinely shared.
+2. Real authentication, moderation tools, and rate limiting.
+3. Server-side rendering so threads are indexable.
+4. Per-category subscriptions and email digests.
+
+The state module (`loadState` / `saveState` in `assets/app.js`) is deliberately
+isolated so step 1 is a swap rather than a rewrite.
+
+## Previous implementation
+
+An earlier version of this project — a Python standard-library HTTP server with
+SQLite-backed accounts, sessions, scrypt password hashing, CSRF checks and
+moderation — is preserved in this repository's history:
+
+- Tag: **`v1-python-forum`**
+- Branch: **`archive-python-forum`**
+
+To restore it, check out either ref, or browse it on GitHub at
+`/tree/archive-python-forum`. Its `render.yaml` targets Render, which is the
+correct host for that version, since GitHub Pages cannot run a Python process.
+
+## Deployment
+
+Hosted on GitHub Pages from the default branch, root folder, with the custom
+domain `teslacybercabforum.com` set in **Settings → Pages**. The `CNAME` file in
+this repo pins the domain so it survives future deploys.
+
+DNS at Name.com points the apex and `www` at GitHub Pages.
+
+## Disclaimer
+
+Independent, unaffiliated fan project. Cybercab, Robotaxi, and FSD are
+trademarks of Tesla, Inc. This project is not affiliated with, endorsed by, or
+sponsored by Tesla, Inc. The disclaimer does not by itself resolve trademark or
+domain-name risk.

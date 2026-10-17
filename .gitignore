@@ -1,8 +1,0 @@
-runtime/
-__pycache__/
-*.pyc
-*.db
-*.db-*
-.env
-.env.*
-deployment-source.zip
