@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: teslacybercabforum
+    runtime: python
+    plan: starter
+    buildCommand: python -m compileall -q server.py
+    startCommand: python server.py
+    healthCheckPath: /healthz
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.13.9
+      - key: HOST
+        value: 0.0.0.0
+      - key: FORUM_SECURE
+        value: "1"
+      - key: FORUM_REGISTRATION_OPEN
+        value: "0"
+      - key: FORUM_DB
+        value: /tmp/forum-preview.db
