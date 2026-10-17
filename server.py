@@ -47,7 +47,7 @@ class Handler(BaseHTTPRequestHandler):
   if path=='/static/forum-mark.svg':
    self.send_response(200);self.send_header('Content-Type','image/svg+xml');self.end_headers();self.wfile.write((ROOT/'static'/'forum-mark.svg').read_bytes());return
   if path=='/static/cybercab-web.jpg':
-   self.send_response(200);self.send_header('Content-Type','image/jpeg');self.send_header('Cache-Control','public, max-age=86400');self.end_headers();self.wfile.write((ROOT/'static'/'cybercab.jpg').read_bytes());return
+   self.send_response(200);self.send_header('Content-Type','image/jpeg');self.send_header('Cache-Control','public, max-age=86400');self.end_headers();self.wfile.write((ROOT/'static'/'cybercab-web.jpg').read_bytes());return
   if path=='/style.css':
    self.send_response(200);self.send_header('Content-Type','text/css');self.end_headers();self.wfile.write((ROOT/'style.css').read_bytes());return
   content=''; title='Community'
