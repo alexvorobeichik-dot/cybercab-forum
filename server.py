@@ -10,6 +10,71 @@ CATEGORIES=['Cybercab discussion','Ownership & rides','Technology','Cities & reg
 # The canonical origin for links, canonicals, Open Graph tags and the sitemap.
 SITE_URL=os.environ.get('FORUM_SITE_URL','https://teslacybercabforum.com').rstrip('/')
 DEFAULT_DESCRIPTION='An independent community for Cybercab discussion, technology, rides and the road ahead.'
+# ---------------------------------------------------------------------------
+# Reference data for /service-areas and /regulations.
+#
+# These two pages exist to be cited, so every claim carries a source, and an
+# unsourced claim does not belong in them. Edit the tables, then bump
+# REFERENCE_UPDATED: the pages render straight from this.
+REFERENCE_UPDATED='18 October 2026'
+SERVICE_AREAS=[
+ {'city':'Austin','state':'TX','since':'22 Jun 2025','mode':'Unsupervised, ramping',
+  'cybercab':'Live since 3 Sep 2026',
+  'note':"The only city where Cybercab carries passengers. Texas registrations went 45 at launch, 169 on 2 October, 319 on 12 October. Tesla says 300+ are serving the city.",
+  'source_name':'CNBC, Texas DMV','source':'https://www.cnbc.com/2026/10/03/tesla-cybercab-pressure-to-expand-after-rocky-first-month-in-austin.html'},
+ {'city':'Dallas','state':'TX','since':'18 Apr 2026','mode':'Unsupervised','cybercab':'',
+  'note':"Named by Tesla's AI director as the next city for Cybercab, with no date given.",
+  'source_name':'TechCrunch','source':'https://techcrunch.com/2026/04/18/tesla-brings-its-robotaxi-service-to-dallas-and-houston/'},
+ {'city':'Houston','state':'TX','since':'18 Apr 2026','mode':'Unsupervised','cybercab':'',
+  'note':'Large numbers of Cybercabs were photographed here in September, which has not been followed by a launch.',
+  'source_name':'TechCrunch','source':'https://techcrunch.com/2026/04/18/tesla-brings-its-robotaxi-service-to-dallas-and-houston/'},
+ {'city':'Miami','state':'FL','since':'3 Jul 2026','mode':'Unsupervised','cybercab':'',
+  'note':'First market outside Texas.',
+  'source_name':'Tesla Q2 2026 filing','source':'https://assets-ir.tesla.com/tesla-contents/IR/TSLA-Q2-2026-Update.pdf'},
+ {'city':'Orlando','state':'FL','since':'21 Jul 2026','mode':'Operating','cybercab':'',
+  'note':'Launched 18 days after Miami, with Tampa.',
+  'source_name':'Tesla Q2 2026 filing','source':'https://assets-ir.tesla.com/tesla-contents/IR/TSLA-Q2-2026-Update.pdf'},
+ {'city':'Tampa','state':'FL','since':'21 Jul 2026','mode':'Operating','cybercab':'',
+  'note':'Launched 18 days after Miami, with Orlando.',
+  'source_name':'Tesla Q2 2026 filing','source':'https://assets-ir.tesla.com/tesla-contents/IR/TSLA-Q2-2026-Update.pdf'},
+ {'city':'San Francisco Bay Area','state':'CA','since':'2026','mode':'Safety monitor onboard','cybercab':'',
+  'note':'Runs with a human monitor because Tesla holds no driverless permit in California. This is not unsupervised service and should not be counted as such.',
+  'source_name':'Electrek, CPUC','source':'https://electrek.co/2026/03/25/california-regulator-confirms-tesla-not-operating-autonomous-vehicle-service/'},
+]
+PLANNED_MARKETS=[
+ {'city':'Las Vegas','state':'NV','status':'Approved, not launched',
+  'note':'Nevada approved up to 5,000 autonomous vehicles in Clark County on 20 August 2026, conditional on service starting within 120 days. Airport service needs separate approval.',
+  'source_name':'Nevada B&I','source':'https://www.business.nv.gov/news-media/press-releases/2026/ntata/nevada-transportation-authority-approves-autonomous-vehicle-network-applications-for-tesla-waymo-and-aviari/'},
+ {'city':'Phoenix','state':'AZ','status':'Preparations underway',
+  'note':'Tesla has held an Arizona ride-hailing permit since 17 November 2025, which allows charging for rides. Driverless operation needs separate certification, and no approval has been confirmed.',
+  'source_name':'TechCrunch','source':'https://techcrunch.com/2025/11/18/tesla-receives-ride-hailing-permit-in-arizona-in-last-required-step-to-launch-robotaxi-service/'},
+]
+REGULATIONS=[
+ {'jurisdiction':'United States (federal)','status':'Audit query open',
+  'detail':"NHTSA opened Audit Query AQ26002 on 3 September 2026, the day Tesla began commercial Cybercab service in Austin. It examines the basis on which Tesla self-certified the Cybercab as meeting all applicable Federal Motor Vehicle Safety Standards, including how far that certification rested on treating certain standards as inapplicable to a vehicle with no brake pedal, no accelerator, no steering wheel and no mirrors. A special order followed on 10 September, and the deadline for answers is 30 October, extended after Tesla asked for 20 November.",
+  'source_name':'NHTSA','source':'https://www.nhtsa.gov/press-releases/investigation-tesla-cybercab-self-certification'},
+ {'jurisdiction':'Texas','status':'Operating',
+  'detail':'Commercially operated automated vehicles need a permit under SB 2807, in force since 2025. Texas DMV registrations are public, which is where most reliable fleet counts come from while operators decline to publish them.',
+  'source_name':'Texas AV Tracker','source':'https://texasavtracker.com/tesla'},
+ {'jurisdiction':'Florida','status':'Operating',
+  'detail':'Unsupervised service in Miami, Orlando and Tampa since July 2026. We have found no Florida-specific permit in the available sources, which is itself worth knowing.',
+  'source_name':'Tesla Q2 2026 filing','source':'https://assets-ir.tesla.com/tesla-contents/IR/TSLA-Q2-2026-Update.pdf'},
+ {'jurisdiction':'Nevada','status':'Approved',
+  'detail':'AV network approval granted on 20 August 2026 for up to 5,000 vehicles in Clark County in the first 12 months, conditional on starting within 120 days of issue.',
+  'source_name':'Nevada B&I','source':'https://www.business.nv.gov/news-media/press-releases/2026/ntata/nevada-transportation-authority-approves-autonomous-vehicle-network-applications-for-tesla-waymo-and-aviari/'},
+ {'jurisdiction':'Arizona','status':'Partial',
+  'detail':'A ride-hailing permit held since 17 November 2025 lets Tesla charge for rides statewide. Driverless operation requires separate certification and no confirmation of it has been found.',
+  'source_name':'TechCrunch','source':'https://techcrunch.com/2025/11/18/tesla-receives-ride-hailing-permit-in-arizona-in-last-required-step-to-launch-robotaxi-service/'},
+ {'jurisdiction':'California','status':'No driverless permit',
+  'detail':'Tesla holds only a CPUC charter-party permit, which covers a human-driven service, and a DMV testing permit that requires a driver present. The CPUC said in March 2026 that Tesla is not operating an autonomous vehicle service. Bay Area rides run with a safety monitor aboard.',
+  'source_name':'Electrek, CPUC','source':'https://electrek.co/2026/03/25/california-regulator-confirms-tesla-not-operating-autonomous-vehicle-service/'},
+]
+# ---------------------------------------------------------------------------
+def ref_table(columns,rows):
+ out=['<div class="table-wrap"><table><thead><tr>']+['<th>'+esc(c)+'</th>' for c in columns]+['</tr></thead><tbody>']
+ for row in rows:out.append('<tr>'+''.join('<td>'+cell+'</td>' for cell in row)+'</tr>')
+ out.append('</tbody></table></div>')
+ return ''.join(out)
 class Connection(sqlite3.Connection):
  def __exit__(self, *args):
   try: return super().__exit__(*args)
@@ -120,7 +185,7 @@ class Handler(BaseHTTPRequestHandler):
   # drop the attribution its licence requires.
   image=SITE_URL+'/static/og-card.png'
   nav=f'<a href="/new">Start a discussion</a><a href="/account">Account</a><span>{esc(user["name"])}</span><form method="post" action="/logout"><input type="hidden" name="csrf" value="{user["csrf"]}"><button class="quiet">Sign out</button></form>' if user else '<a href="/login">Sign in</a><a class="button" href="/register">Join the community</a>'
-  return f'''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{esc(full_title)}</title><meta name="description" content="{esc(desc)}"><link rel="canonical" href="{esc(canonical)}"><meta property="og:site_name" content="Cybercab Forum"><meta property="og:type" content="{esc(og_type)}"><meta property="og:title" content="{esc(full_title)}"><meta property="og:description" content="{esc(desc)}"><meta property="og:url" content="{esc(canonical)}"><meta property="og:image" content="{esc(image)}"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="{esc(full_title)}"><meta name="twitter:description" content="{esc(desc)}"><meta name="twitter:image" content="{esc(image)}">{feeds}<link rel="stylesheet" href="/style.css"></head><body><header><a class="brand" href="/"><img class="brand-mark" src="/static/forum-mark.svg" alt="" width="48" height="48"><b>CYBERCAB <span class="brand-forum">FORUM</span><span class="subtitle">INDEPENDENT COMMUNITY</span></b></a><nav>{nav}</nav></header><main>{content}</main><footer><b>CYBERCAB FORUM</b><p>Independent enthusiast community. Not affiliated with, endorsed by, or sponsored by Tesla, Inc. Tesla and Cybercab are trademarks of their respective owners.</p><a href="/guidelines">Community guidelines & privacy</a></footer></body></html>'''
+  return f'''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{esc(full_title)}</title><meta name="description" content="{esc(desc)}"><link rel="canonical" href="{esc(canonical)}"><meta property="og:site_name" content="Cybercab Forum"><meta property="og:type" content="{esc(og_type)}"><meta property="og:title" content="{esc(full_title)}"><meta property="og:description" content="{esc(desc)}"><meta property="og:url" content="{esc(canonical)}"><meta property="og:image" content="{esc(image)}"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="{esc(full_title)}"><meta name="twitter:description" content="{esc(desc)}"><meta name="twitter:image" content="{esc(image)}">{feeds}<link rel="stylesheet" href="/style.css"></head><body><header><a class="brand" href="/"><img class="brand-mark" src="/static/forum-mark.svg" alt="" width="48" height="48"><b>CYBERCAB <span class="brand-forum">FORUM</span><span class="subtitle">INDEPENDENT COMMUNITY</span></b></a><nav>{nav}</nav></header><main>{content}</main><footer><b>CYBERCAB FORUM</b><p>Independent enthusiast community. Not affiliated with, endorsed by, or sponsored by Tesla, Inc. Tesla and Cybercab are trademarks of their respective owners.</p><a href="/service-areas">Service areas</a> · <a href="/regulations">Regulation tracker</a> · <a href="/guidelines">Guidelines & privacy</a></footer></body></html>'''
  def form(self,user,action,fields,label):
   csrf=f'<input type="hidden" name="csrf" value="{user["csrf"]}">' if user else ''
   return f'<form method="post" action="{action}">{csrf}{fields}<button>{label}</button></form>'
@@ -148,7 +213,7 @@ class Handler(BaseHTTPRequestHandler):
   if path=='/sitemap.xml':
    with connect() as c:
     topics=c.execute('SELECT id,created FROM topics ORDER BY id DESC LIMIT 5000').fetchall()
-   entries=['<url><loc>'+esc(SITE_URL+'/')+'</loc></url>','<url><loc>'+esc(SITE_URL+'/guidelines')+'</loc></url>']
+   entries=['<url><loc>'+esc(SITE_URL+'/')+'</loc></url>','<url><loc>'+esc(SITE_URL+'/guidelines')+'</loc></url>','<url><loc>'+esc(SITE_URL+'/service-areas')+'</loc></url>','<url><loc>'+esc(SITE_URL+'/regulations')+'</loc></url>']
    for t in topics:
     lastmod=esc(str(t['created']).replace(' ','T')+'Z') if t['created'] else ''
     entries.append('<url><loc>'+esc(f'{SITE_URL}/topic/{t["id"]}')+'</loc>'+(f'<lastmod>{lastmod}</lastmod>' if lastmod else '')+'</url>')
@@ -189,6 +254,7 @@ class Handler(BaseHTTPRequestHandler):
     count=c.execute('SELECT count(*) FROM users').fetchone()[0]; total=c.execute('SELECT count(*) FROM topics').fetchone()[0]
     content=f'''<section class="hero"><div><div class="eyebrow">THE NEXT CHAPTER OF GETTING THERE</div><h1>No steering wheel.<br><em>Plenty to talk about.</em></h1><p>A place to discuss Cybercab, share perspectives, and explore the autonomous road ahead. Built for curious minds. Open to everyone.</p><a class="button" href="{'/new' if u else '/register'}">{'Start a discussion' if u else 'Find your people'} ↗</a></div><figure class="vehicle"><img src="/static/cybercab-web.jpg?v=2" alt="Gold Tesla Cybercab on display at Santana Row" width="11648" height="8736"><figcaption>Photo: <a href="https://commons.wikimedia.org/wiki/File:Tesla_Cybercab_at_Santana_Row_oblique_view_dllu.jpg" target="_blank" rel="noopener">Dllu / Wikimedia Commons</a> · <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noopener">CC BY-SA 4.0</a> · cropped to fit</figcaption></figure></section><section class="stats"><span><b>{count}</b> members</span><span><b>{total}</b> discussions</span><span class="live">Independent. Community-driven.</span></section><div class="layout"><aside><h3>Explore the forum</h3><a href="/">All discussions ↗</a>'''
     content+=''.join(f'<a href="/?category={catname.replace("&","%26").replace(" ","%20")}">{esc(catname)}</a>' for catname in CATEGORIES)
+    content+='<h3>Reference</h3><a href="/service-areas">Service areas ↗</a><a href="/regulations">Regulation tracker ↗</a>'
     content+='''<div class="note"><div class="eyebrow">A BETTER CONVERSATION</div><p>Be curious. Cite your sources. Disagree respectfully.</p><a href="/guidelines">Read our guidelines →</a></div></aside><section><div class="sectionhead"><h2>Community discussions</h2><a href="/new">+ New topic</a></div><form class="search" method="get"><input name="q" placeholder="Search discussions" aria-label="Search discussions" value="'''+esc(q)+'''"><button>Search</button></form>'''
     for r in rows:
      content+=f'<article class="topic"><span class="tag">{esc(r["category"])}</span><h3><a href="/topic/{r["id"]}">{esc(r["title"])}</a></h3><p>{esc(r["body"][:160])}</p><div class="meta">{esc(r["name"])} · {esc(r["created"])} UTC <span>{r["replies"]} replies {"· Locked" if r["locked"] else ""}</span></div></article>'
@@ -239,6 +305,27 @@ class Handler(BaseHTTPRequestHandler):
      fields='<label>Your reply<textarea name="body" rows="4" maxlength="20000" required>'+esc(row['body'])+'</textarea></label>'
     content=('<section class="panel"><h1>Edit '+parts[2]+'</h1><p>You are editing your own post. The topic will show that it was edited, and when.</p>'
      +self.form(u,f'/edit/{parts[2]}/{item_id}',fields,'Save changes')
+     +'</section>')
+   elif path=='/service-areas':
+    title='Where the Tesla robotaxi runs'; canonical_path='/service-areas'
+    description='Which markets the Tesla robotaxi service actually carries passengers in, which of them have Cybercab, and what is next.'
+    rows=[[('<b>'+esc(m['city'])+'</b><br>'+esc(m['state'])),esc(m['since']),esc(m['mode']),('<b>'+esc(m['cybercab'])+'</b>') if m['cybercab'] else 'Not yet',esc(m['note'])+' <a href="'+esc(m['source'])+'">'+esc(m['source_name'])+'</a>'] for m in SERVICE_AREAS]
+    planned=[[('<b>'+esc(m['city'])+'</b><br>'+esc(m['state'])),esc(m['status']),esc(m['note'])+' <a href="'+esc(m['source'])+'">'+esc(m['source_name'])+'</a>'] for m in PLANNED_MARKETS]
+    content=('<a href="/">← All discussions</a><section class="panel"><h1>Where the Tesla robotaxi runs</h1>'
+     +'<p>Robotaxi is the service. Cybercab is the purpose-built two-seater, and it is not where most of the service is. This table is what is carrying passengers now rather than what has been announced.</p>'
+     +ref_table(['Market','Robotaxi since','Mode','Cybercab','Notes'],rows)
+     +'<h2>Approved or preparing, not yet carrying passengers</h2>'
+     +ref_table(['Market','Status','Notes'],planned)
+     +'<p class="meta">Last checked '+esc(REFERENCE_UPDATED)+'. Fleet numbers come from state registrations where they exist, because operators do not publish them consistently. Corrections welcome in the forum.</p>'
+     +'</section>')
+   elif path=='/regulations':
+    title='Robotaxi regulation tracker'; canonical_path='/regulations'
+    description="The rules Tesla's robotaxi service operates under, state by state, and the federal audit of the Cybercab's self-certification."
+    rows=[[('<b>'+esc(r['jurisdiction'])+'</b>'),esc(r['status']),esc(r['detail'])+' <a href="'+esc(r['source'])+'">'+esc(r['source_name'])+'</a>'] for r in REGULATIONS]
+    content=('<a href="/">← All discussions</a><section class="panel"><h1>The rules the robotaxi runs under</h1>'
+     +'<p>The Cybercab has no steering wheel, no pedals and no mirrors, which is not the shape the Federal Motor Vehicle Safety Standards were written around. That mismatch is the substance of the federal entry below, and it is why the state picture is so uneven.</p>'
+     +ref_table(['Jurisdiction','Status','What is happening'],rows)
+     +'<p class="meta">Last checked '+esc(REFERENCE_UPDATED)+'. A summary for readers, not legal advice. Where a filing exists, follow the source rather than this page.</p>'
      +'</section>')
    elif path=='/account':
     if not u:self.send(303,'',location='/login');return

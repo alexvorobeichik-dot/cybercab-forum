@@ -30,3 +30,13 @@ figure.vehicle{margin:0;height:auto;overflow:hidden;border:1px solid var(--line)
   max-width: 100%;
   text-align: center;
 }
+
+/* Reference tables (/service-areas, /regulations). Wrapped so a wide table
+   scrolls on a phone instead of breaking the layout. */
+.table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:22px 0}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{text-align:left;padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--muted);white-space:nowrap}
+td{color:var(--muted)}
+td b{color:#f2f4ed}
+tr:last-child td{border-bottom:0}
