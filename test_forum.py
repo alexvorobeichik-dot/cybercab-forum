@@ -44,7 +44,8 @@ class Client:
         self.port = port
         self.cookies = {}
 
-    def request(self, method, path, data=None, headers=None):
+    def fetch(self, method, path, data=None, headers=None):
+        """Return (status, headers, raw bytes). Use this for binary assets."""
         body = urllib.parse.urlencode(data) if data is not None else None
         outgoing = dict(headers or {})
         if body is not None:
@@ -55,11 +56,15 @@ class Client:
         try:
             connection.request(method, path, body=body, headers=outgoing)
             response = connection.getresponse()
-            payload = response.read().decode('utf-8', 'replace')
+            payload = response.read()
             self._remember(response.headers)
             return response.status, response.headers, payload
         finally:
             connection.close()
+
+    def request(self, method, path, data=None, headers=None):
+        status, response_headers, payload = self.fetch(method, path, data, headers)
+        return status, response_headers, payload.decode('utf-8', 'replace')
 
     def _remember(self, headers):
         for raw in headers.get_all('Set-Cookie') or []:
@@ -215,10 +220,11 @@ class ForumTests(unittest.TestCase):
     def test_share_card_is_actually_served(self):
         # The Open Graph tags point at this file, so a missing or renamed asset
         # would leave every shared link with a broken preview.
-        status, headers, body = self.client().get('/static/og-card.png')
+        status, headers, payload = self.client().fetch('GET', '/static/og-card.png')
         self.assertEqual(status, 200)
         self.assertEqual(headers['Content-Type'], 'image/png')
-        self.assertTrue(body.startswith('\x89PNG\r\n'))
+        self.assertTrue(payload.startswith(b'\x89PNG\r\n'), 'not a PNG')
+        self.assertGreater(len(payload), 10000, 'suspiciously small share card')
 
     def test_topic_pages_use_article_metadata(self):
         client, _ = self.make_user('article')
