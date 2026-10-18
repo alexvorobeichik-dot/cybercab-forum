@@ -42,6 +42,11 @@ and the sitemap; defaults to `https://teslacybercabforum.com`).
 - Moderator topic locking and deletion, with confirmation
 - Responsive dark interface, guidelines/privacy page and independence
   disclaimer
+- RSS. `/feed.xml` carries the whole forum, topics and replies together, and
+  `/topic/N/feed.xml` carries a single discussion. Both are advertised with
+  `rel=alternate` links so a reader finds them unaided, and replies carry
+  anchors so a feed entry lands on the reply itself rather than the top of the
+  thread
 - Server-rendered pages, so threads are readable by search engines
 - No fabricated members, posts or activity
 
@@ -174,8 +179,11 @@ Deliberately absent. Worth knowing before inviting members.
   the operator to run `admin.py reset-password`
 - Self-service account deletion; removal is an operator action
 - Spam and bot controls beyond rate limiting
-- Per-reply moderation, reporting, account suspension
-- A feed; the sitemap exists but there is no RSS or Atom
+- Reporting, account suspension, and per-reply moderation. Deleting an
+  individual reply is not possible at all — only a whole topic can be removed,
+  which becomes awkward the first time a single spam reply needs taking down
+- Email notifications. Feeds cover the "tell me when someone replies" problem
+  without storing addresses, but they only help people who use a feed reader
 
 Security and trademark review is still outstanding. The disclaimer does not
 guarantee the domain is free of trademark issues, and this community must not
