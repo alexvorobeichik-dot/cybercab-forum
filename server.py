@@ -56,6 +56,9 @@ class Handler(BaseHTTPRequestHandler):
   return f'<form method="post" action="{action}">{csrf}{fields}<button>{label}</button></form>'
  def do_GET(self):
   u=self.session(); path=urlparse(self.path).path; query=parse_qs(urlparse(self.path).query)
+  if path=='/debug-proxy':
+   # TEMPORARY diagnostic: reports only caller-visible proxy headers, never cookies.
+   self.send(200,json.dumps({'peer':self.client_address[0],'forwarded_for':self.headers.get('X-Forwarded-For'),'cf_connecting_ip':self.headers.get('CF-Connecting-IP'),'x_real_ip':self.headers.get('X-Real-IP'),'true_client_ip':self.headers.get('True-Client-IP'),'computed_key':client_ip(self.headers,self.client_address[0]),'header_names':sorted(self.headers.keys())},indent=1));return
   if path=='/healthz':
    with connect() as c:c.execute('SELECT 1').fetchone()
    self.send(200,'ok');return
