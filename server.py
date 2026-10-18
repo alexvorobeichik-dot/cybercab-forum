@@ -1,4 +1,4 @@
-import os, sqlite3, secrets, hashlib, hmac, html, json, time
+import os, sqlite3, secrets, hashlib, hmac, html, json, time, threading
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
 from http.cookies import SimpleCookie
@@ -19,7 +19,24 @@ def init():
 def esc(v): return html.escape(str(v),quote=True)
 def password(p,salt=None):
  salt=salt or secrets.token_hex(16); return salt+':'+hashlib.scrypt(p.encode(),salt=salt.encode(),n=16384,r=8,p=1).hex()
+RATE={}
+RATE_LOCK=threading.Lock()
+RATE_SWEEP=86400
+def client_ip(headers,peer):
+ forwarded=headers.get('X-Forwarded-For','')
+ return (forwarded.split(',')[-1].strip() or peer) if forwarded else peer
+def rate_limited(bucket,key,limit,window):
+ now=time.time()
+ with RATE_LOCK:
+  if len(RATE)>2048:
+   for k,(_,start) in list(RATE.items()):
+    if now-start>RATE_SWEEP:RATE.pop(k,None)
+  count,start=RATE.get((bucket,key),(0,now))
+  if now-start>window:count,start=0,now
+  count+=1;RATE[(bucket,key)]=(count,start)
+  return count>limit
 class Handler(BaseHTTPRequestHandler):
+ timeout=30
  def send(self,code,body,cookie=None,location=None):
   self.send_response(code); self.send_header('Content-Type','text/html; charset=utf-8'); self.send_header('X-Content-Type-Options','nosniff'); self.send_header('X-Frame-Options','DENY'); self.send_header('Referrer-Policy','same-origin'); self.send_header('Content-Security-Policy',"default-src 'self'; style-src 'self' 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'")
   if cookie:self.send_header('Set-Cookie',cookie)
@@ -97,6 +114,10 @@ class Handler(BaseHTTPRequestHandler):
   def fail(msg,status=400):self.send(status,self.page('Request not completed',f'<section class="panel"><h1>Request not completed</h1><p>{esc(msg)}</p><a href="/">Return to forum</a></section>',u))
   origin=self.headers.get('Origin')
   if origin and urlparse(origin).netloc!=self.headers.get('Host'):fail('Invalid request origin',403);return
+  ip=client_ip(self.headers,self.client_address[0])
+  if path in ['/register','/login']:
+   if rate_limited('auth',ip,10,300):fail('Too many sign-in attempts from this address. Try again in a few minutes.',429);return
+  elif rate_limited('write',ip,40,60):fail('Too many requests from this address. Slow down and try again shortly.',429);return
   with connect() as c:
    if path in ['/register','/login']:
     name=get('name');p=get('password')
@@ -106,7 +127,9 @@ class Handler(BaseHTTPRequestHandler):
       c.execute('INSERT INTO users(name,password,admin) VALUES(?,?,0)',(name,password(p)))
      except sqlite3.IntegrityError:fail('That username is already registered.');return
     row=c.execute('SELECT * FROM users WHERE name=?',(name,)).fetchone()
-    if not row or not hmac.compare_digest(row['password'],password(p,row['password'].split(':')[0])):fail('Invalid username or password.',401);return
+    stored=row['password'] if row else '0'*32+':'+'0'*128
+    matches=hmac.compare_digest(stored,password(p,stored.split(':')[0]))
+    if not row or not matches:fail('Invalid username or password.',401);return
     token=secrets.token_urlsafe(32);c.execute('DELETE FROM sessions WHERE expires<?',(time.time(),));c.execute('INSERT INTO sessions VALUES(?,?,?,?)',(token,row['id'],secrets.token_urlsafe(32),time.time()+604800));c.commit()
     cookie=f'session={token}; HttpOnly; SameSite=Lax; Path=/; Max-Age=604800'+('; Secure' if os.environ.get('FORUM_SECURE')=='1' else '')
     self.send(303,'',cookie=cookie,location='/');return
