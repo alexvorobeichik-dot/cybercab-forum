@@ -1,4 +1,4 @@
-import os, sqlite3, secrets, hashlib, hmac, html, json, time, threading
+import os, sqlite3, secrets, hashlib, hmac, html, json, time, threading, datetime
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import parse_qs, urlparse
 from http.cookies import SimpleCookie
@@ -23,6 +23,31 @@ def init():
   for table in ('topics','replies'):
    if 'edited' not in {r['name'] for r in c.execute(f'PRAGMA table_info({table})')}:
     c.execute(f'ALTER TABLE {table} ADD COLUMN edited TEXT')
+DAYS=['Mon','Tue','Wed','Thu','Fri','Sat','Sun']
+MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+def rfc822(stamp):
+ # SQLite writes 'YYYY-MM-DD HH:MM:SS' in UTC. Assembled by hand rather than
+ # with strftime so the day and month names do not depend on the server's
+ # locale, which would otherwise produce an invalid pubDate that feed readers
+ # silently drop.
+ try:dt=datetime.datetime.strptime(str(stamp)[:19],'%Y-%m-%d %H:%M:%S')
+ except (ValueError,TypeError):return ''
+ return f'{DAYS[dt.weekday()]}, {dt.day:02d} {MONTHS[dt.month-1]} {dt.year} {dt.hour:02d}:{dt.minute:02d}:{dt.second:02d} +0000'
+def feed_item(title,link,body,stamp):
+ published=rfc822(stamp)
+ return ('<item><title>'+esc(title)+'</title><link>'+esc(link)+'</link>'
+  +'<guid isPermaLink="false">'+esc(link)+'</guid>'
+  +(('<pubDate>'+published+'</pubDate>') if published else '')
+  +'<description>'+esc(body).replace(chr(10),'<br />')+'</description></item>')
+def feed_document(title,self_link,description,items):
+ return ('<?xml version="1.0" encoding="UTF-8"?>'
+  +'<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom"><channel>'
+  +'<title>'+esc(title)+'</title>'
+  +'<link>'+esc(SITE_URL)+'/</link>'
+  +'<description>'+esc(description)+'</description>'
+  +'<language>en</language>'
+  +'<atom:link href="'+esc(self_link)+'" rel="self" type="application/rss+xml"/>'
+  +''.join(items)+'</channel></rss>')
 def bootstrap_admin():
  # Operator bootstrap, called at startup. Promotes a named account, but only
  # while the forum has no moderator at all. Idempotent and self-disabling: once
@@ -83,7 +108,10 @@ class Handler(BaseHTTPRequestHandler):
   except Exception:return None
   token=cookie['session'].value if 'session' in cookie else ''
   with connect() as c:return c.execute('SELECT users.*,sessions.csrf,sessions.token FROM sessions JOIN users ON users.id=user_id WHERE token=? AND expires>?',(token,time.time())).fetchone()
- def page(self,title,content,user=None,description=None,canonical_path='/',og_type='website'):
+ def page(self,title,content,user=None,description=None,canonical_path='/',og_type='website',feed_path=None):
+  feeds=('<link rel="alternate" type="application/rss+xml" title="Cybercab Forum" href="'+esc(SITE_URL)+'/feed.xml">')
+  if feed_path:
+   feeds+=('<link rel="alternate" type="application/rss+xml" title="This discussion" href="'+esc(SITE_URL+feed_path)+'">')
   full_title=f'{title} · Cybercab Forum'
   desc=description or DEFAULT_DESCRIPTION
   canonical=SITE_URL+canonical_path
@@ -92,7 +120,7 @@ class Handler(BaseHTTPRequestHandler):
   # drop the attribution its licence requires.
   image=SITE_URL+'/static/og-card.png'
   nav=f'<a href="/new">Start a discussion</a><a href="/account">Account</a><span>{esc(user["name"])}</span><form method="post" action="/logout"><input type="hidden" name="csrf" value="{user["csrf"]}"><button class="quiet">Sign out</button></form>' if user else '<a href="/login">Sign in</a><a class="button" href="/register">Join the community</a>'
-  return f'''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{esc(full_title)}</title><meta name="description" content="{esc(desc)}"><link rel="canonical" href="{esc(canonical)}"><meta property="og:site_name" content="Cybercab Forum"><meta property="og:type" content="{esc(og_type)}"><meta property="og:title" content="{esc(full_title)}"><meta property="og:description" content="{esc(desc)}"><meta property="og:url" content="{esc(canonical)}"><meta property="og:image" content="{esc(image)}"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="{esc(full_title)}"><meta name="twitter:description" content="{esc(desc)}"><meta name="twitter:image" content="{esc(image)}"><link rel="stylesheet" href="/style.css"></head><body><header><a class="brand" href="/"><img class="brand-mark" src="/static/forum-mark.svg" alt="" width="48" height="48"><b>CYBERCAB <span class="brand-forum">FORUM</span><span class="subtitle">INDEPENDENT COMMUNITY</span></b></a><nav>{nav}</nav></header><main>{content}</main><footer><b>CYBERCAB FORUM</b><p>Independent enthusiast community. Not affiliated with, endorsed by, or sponsored by Tesla, Inc. Tesla and Cybercab are trademarks of their respective owners.</p><a href="/guidelines">Community guidelines & privacy</a></footer></body></html>'''
+  return f'''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{esc(full_title)}</title><meta name="description" content="{esc(desc)}"><link rel="canonical" href="{esc(canonical)}"><meta property="og:site_name" content="Cybercab Forum"><meta property="og:type" content="{esc(og_type)}"><meta property="og:title" content="{esc(full_title)}"><meta property="og:description" content="{esc(desc)}"><meta property="og:url" content="{esc(canonical)}"><meta property="og:image" content="{esc(image)}"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="{esc(full_title)}"><meta name="twitter:description" content="{esc(desc)}"><meta name="twitter:image" content="{esc(image)}">{feeds}<link rel="stylesheet" href="/style.css"></head><body><header><a class="brand" href="/"><img class="brand-mark" src="/static/forum-mark.svg" alt="" width="48" height="48"><b>CYBERCAB <span class="brand-forum">FORUM</span><span class="subtitle">INDEPENDENT COMMUNITY</span></b></a><nav>{nav}</nav></header><main>{content}</main><footer><b>CYBERCAB FORUM</b><p>Independent enthusiast community. Not affiliated with, endorsed by, or sponsored by Tesla, Inc. Tesla and Cybercab are trademarks of their respective owners.</p><a href="/guidelines">Community guidelines & privacy</a></footer></body></html>'''
  def form(self,user,action,fields,label):
   csrf=f'<input type="hidden" name="csrf" value="{user["csrf"]}">' if user else ''
   return f'<form method="post" action="{action}">{csrf}{fields}<button>{label}</button></form>'
@@ -126,7 +154,34 @@ class Handler(BaseHTTPRequestHandler):
     entries.append('<url><loc>'+esc(f'{SITE_URL}/topic/{t["id"]}')+'</loc>'+(f'<lastmod>{lastmod}</lastmod>' if lastmod else '')+'</url>')
    body='<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'+''.join(entries)+'</urlset>'
    raw=body.encode('utf-8');self.send_response(200);self.send_header('Content-Type','application/xml; charset=utf-8');self.send_header('Cache-Control','public, max-age=600');self.send_header('Content-Length',str(len(raw)));self.end_headers();self.wfile.write(raw);return
-  content=''; title='Community'; description=None; canonical_path='/'; og_type='website'
+  if path=='/feed.xml':
+   with connect() as c:
+    rows=c.execute("SELECT 'topic' AS kind,topics.id AS topic_id,topics.id AS item_id,topics.title AS title,topics.body AS body,topics.created AS created,users.name AS name FROM topics JOIN users ON users.id=topics.user_id UNION ALL SELECT 'reply' AS kind,replies.topic_id AS topic_id,replies.id AS item_id,topics.title AS title,replies.body AS body,replies.created AS created,users.name AS name FROM replies JOIN topics ON topics.id=replies.topic_id JOIN users ON users.id=replies.user_id ORDER BY created DESC LIMIT 30").fetchall()
+   items=[]
+   for r in rows:
+    if r['kind']=='topic':
+     link=f'{SITE_URL}/topic/{r["topic_id"]}'; label=r['title']
+    else:
+     link=f'{SITE_URL}/topic/{r["topic_id"]}#reply-{r["item_id"]}'; label='Re: '+r['title']
+    items.append(feed_item(label+' — '+r['name'],link,r['body'],r['created']))
+   body=feed_document('Cybercab Forum',SITE_URL+'/feed.xml','New discussions and replies on the Cybercab Forum.',items)
+   raw=body.encode('utf-8');self.send_response(200);self.send_header('Content-Type','application/rss+xml; charset=utf-8');self.send_header('Cache-Control','public, max-age=300');self.send_header('Content-Length',str(len(raw)));self.end_headers();self.wfile.write(raw);return
+  if path.startswith('/topic/') and path.endswith('/feed.xml'):
+   try:tid=int(path.split('/')[2])
+   except (ValueError,IndexError):
+    self.send(404,self.page('Not found','<h1>Page not found</h1>',u));return
+   with connect() as c:
+    topic=c.execute('SELECT topics.*,users.name FROM topics JOIN users ON users.id=topics.user_id WHERE topics.id=?',(tid,)).fetchone()
+    if not topic:
+     self.send(404,self.page('Not found','<h1>Topic not found</h1>',u));return
+    rows=c.execute('SELECT replies.*,users.name FROM replies JOIN users ON users.id=replies.user_id WHERE topic_id=? ORDER BY replies.id DESC LIMIT 100',(tid,)).fetchall()
+   items=[feed_item(topic['title']+' — '+topic['name'],f'{SITE_URL}/topic/{tid}',topic['body'],topic['created'])]
+   for r in rows:
+    link=f'{SITE_URL}/topic/{tid}#reply-{r["id"]}'
+    items.append(feed_item('Re: '+topic['title']+' — '+r['name'],link,r['body'],r['created']))
+   body=feed_document(topic['title']+' — Cybercab Forum',f'{SITE_URL}/topic/{tid}/feed.xml','Replies to this discussion on the Cybercab Forum.',items)
+   raw=body.encode('utf-8');self.send_response(200);self.send_header('Content-Type','application/rss+xml; charset=utf-8');self.send_header('Cache-Control','public, max-age=300');self.send_header('Content-Length',str(len(raw)));self.end_headers();self.wfile.write(raw);return
+  content=''; title='Community'; description=None; canonical_path='/'; og_type='website'; feed_path=None
   with connect() as c:
    if path=='/':
     q=query.get('q',[''])[0][:100]; cat=query.get('category',[''])[0]
@@ -153,11 +208,11 @@ class Handler(BaseHTTPRequestHandler):
     if not r:self.send(404,self.page('Not found','<h1>Topic not found</h1>',u));return
     edited_note=(' · edited '+str(r['edited'])+' UTC') if r['edited'] else ''
     can_edit=(' · <a href="/edit/topic/'+str(tid)+'">edit</a>') if u and u['id']==r['user_id'] else ''
-    title=r['title'];description=' '.join(r['body'].split())[:160];canonical_path=f'/topic/{tid}';og_type='article';content=f'<a href="/">← All discussions</a><article class="post"><span class="tag">{esc(r["category"])}</span><h1>{esc(title)}</h1><p class="meta">{esc(r["name"])} · {r["created"]} UTC{edited_note}{can_edit}</p><div class="body">{esc(r["body"])}</div></article><h2>Replies</h2>'
+    title=r['title'];description=' '.join(r['body'].split())[:160];canonical_path=f'/topic/{tid}';og_type='article';feed_path=f'/topic/{tid}/feed.xml';content=f'<a href="/">← All discussions</a><article class="post"><span class="tag">{esc(r["category"])}</span><h1>{esc(title)}</h1><p class="meta">{esc(r["name"])} · {r["created"]} UTC{edited_note}{can_edit}</p><div class="body">{esc(r["body"])}</div></article><h2>Replies</h2>'
     for reply in c.execute('SELECT replies.*,users.name FROM replies JOIN users ON users.id=replies.user_id WHERE topic_id=? ORDER BY replies.id',(tid,)):
      reply_edited=(' · edited '+str(reply['edited'])+' UTC') if reply['edited'] else ''
      reply_edit=(' · <a href="/edit/reply/'+str(reply['id'])+'">edit</a>') if u and u['id']==reply['user_id'] else ''
-     content+=f'<article class="post"><b>{esc(reply["name"])}</b><small> · {reply["created"]} UTC{reply_edited}{reply_edit}</small><div class="body">{esc(reply["body"])}</div></article>'
+     content+=f'<article class="post" id="reply-{reply["id"]}"><b>{esc(reply["name"])}</b><small> · {reply["created"]} UTC{reply_edited}{reply_edit}</small><div class="body">{esc(reply["body"])}</div></article>'
     if u and not r['locked']:content+=self.form(u,f'/reply/{tid}','<label>Your reply<textarea name="body" rows="4" maxlength="20000" required></textarea></label>','Post reply')
     elif not u:content+='<p><a href="/login">Sign in</a> to join the discussion.</p>'
     else:content+='<p>This discussion is locked.</p>'
@@ -192,7 +247,7 @@ class Handler(BaseHTTPRequestHandler):
    elif path=='/guidelines':
     title='Guidelines & privacy';canonical_path='/guidelines';description='How the Cybercab Forum is moderated, and what happens to your account, posts and sessions.';content='<section class="panel"><h1>Guidelines & privacy</h1><h2>Keep it constructive</h2><p>No harassment, spam, impersonation, unlawful content, or personal information about others. Distinguish opinions from facts; link to sources for news. Do not post copyrighted material without permission. Moderators may lock or remove topics.</p><h2>Your information</h2><p>This forum stores your public username, a salted password hash, posts, and a seven-day session cookie. Posts and usernames are public. No analytics or advertising trackers are installed. Server access logs may include IP addresses. Do not reuse a sensitive password. Public registration is closed during deployment testing. Administrator access is assigned explicitly by the operator, never automatically to the first registrant.</p><h2>Early community</h2><p>This is an independent enthusiast forum, not a Tesla service. Information here is not financial, legal, or safety advice. For privacy or abuse issues, contact the site administrator by replying to their community welcome topic. The operator must publish a dedicated contact method before public launch.</p></section>'
    else:self.send(404,self.page('Not found','<h1>Page not found</h1>',u));return
-  self.send(200,self.page(title,content,u,description=description,canonical_path=canonical_path,og_type=og_type))
+  self.send(200,self.page(title,content,u,description=description,canonical_path=canonical_path,og_type=og_type,feed_path=feed_path))
  def do_POST(self):
   path=urlparse(self.path).path;u=self.session()
   try:size=int(self.headers.get('Content-Length','0'))

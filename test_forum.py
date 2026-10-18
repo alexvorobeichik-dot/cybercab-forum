@@ -490,6 +490,77 @@ class ForumTests(unittest.TestCase):
         self.assertIn('<meta property="og:type" content="article">', body)
         self.assertIn('The quick brown fox jumps over the lazy dog.', body)
 
+    # ------------------------------------------------------------------
+    # feeds
+    # ------------------------------------------------------------------
+    def test_rfc822_format(self):
+        # Feed readers silently drop items whose pubDate they cannot parse, and
+        # strftime would emit the local month names on a non-English server.
+        self.assertEqual(server.rfc822('2026-10-18 04:51:26'),
+                         'Sun, 18 Oct 2026 04:51:26 +0000')
+        self.assertEqual(server.rfc822('2026-01-01 00:00:00'),
+                         'Thu, 01 Jan 2026 00:00:00 +0000')
+        self.assertEqual(server.rfc822('not a date'), '')
+
+    def test_site_feed_lists_topics_and_replies(self):
+        client, _ = self.make_user('feeder')
+        location = self.make_topic(client, title='A topic for the feed')
+        topic_id = location.rsplit('/', 1)[1]
+        token = client.form_token(location)
+        client.post(f'/reply/{topic_id}', {'csrf': token, 'body': 'A reply for the feed.'})
+
+        status, headers, body = self.client().get('/feed.xml')
+        self.assertEqual(status, 200)
+        self.assertIn('rss+xml', headers['Content-Type'])
+        root = xml.etree.ElementTree.fromstring(body)   # must parse
+        self.assertEqual(root.tag, 'rss')
+        titles = [e.text for e in root.iter('title')]
+        self.assertIn('Cybercab Forum', titles)
+        self.assertTrue(any('A topic for the feed' in t for t in titles), titles)
+        self.assertTrue(any(t.startswith('Re: ') for t in titles), titles)
+        for published in root.iter('pubDate'):
+            self.assertRegex(
+                published.text,
+                r'^[A-Z][a-z]{2}, \d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2} \+0000$')
+
+    def test_topic_feed_contains_that_thread_only(self):
+        client, _ = self.make_user('topicfeed')
+        location = self.make_topic(client, title='Thread with its own feed')
+        topic_id = location.rsplit('/', 1)[1]
+        token = client.form_token(location)
+        client.post(f'/reply/{topic_id}', {'csrf': token, 'body': 'Reply inside the thread.'})
+
+        status, headers, body = self.client().get(f'/topic/{topic_id}/feed.xml')
+        self.assertEqual(status, 200)
+        self.assertIn('rss+xml', headers['Content-Type'])
+        root = xml.etree.ElementTree.fromstring(body)
+        self.assertEqual(len(list(root.iter('item'))), 2, 'the topic plus its one reply')
+
+    def test_topic_feed_for_an_unknown_topic_is_404(self):
+        self.assertEqual(self.client().get('/topic/999999/feed.xml')[0], 404)
+        self.assertEqual(self.client().get('/topic/nonsense/feed.xml')[0], 404)
+
+    def test_feeds_are_discoverable_from_the_pages(self):
+        client, _ = self.make_user('discover')
+        location = self.make_topic(client)
+        _, _, home = self.client().get('/')
+        self.assertIn(f'href="{server.SITE_URL}/feed.xml"', home)
+        self.assertIn('application/rss+xml', home)
+        _, _, topic = self.client().get(location)
+        self.assertIn(f'href="{server.SITE_URL}{location}/feed.xml"', topic)
+
+    def test_replies_have_anchors_so_feed_links_resolve(self):
+        client, _ = self.make_user('anchors')
+        location = self.make_topic(client)
+        topic_id = location.rsplit('/', 1)[1]
+        token = client.form_token(location)
+        client.post(f'/reply/{topic_id}', {'csrf': token, 'body': 'Anchor me.'})
+        reply_id = self.scalar('SELECT id FROM replies WHERE topic_id=?', (int(topic_id),))
+        _, _, page = self.client().get(location)
+        self.assertIn(f'id="reply-{reply_id}"', page)
+        _, _, feed = self.client().get('/feed.xml')
+        self.assertIn(f'#reply-{reply_id}', feed, 'the feed must link to the anchor')
+
     def test_unknown_routes_return_404(self):
         client = self.client()
         for path in ('/nope', '/topic/999999', '/topic/not-a-number', '/../etc/passwd'):
