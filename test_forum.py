@@ -226,6 +226,114 @@ class ForumTests(unittest.TestCase):
         self.assertTrue(payload.startswith(b'\x89PNG\r\n'), 'not a PNG')
         self.assertGreater(len(payload), 10000, 'suspiciously small share card')
 
+    # ------------------------------------------------------------------
+    # operator bootstrap and self-service account changes
+    # ------------------------------------------------------------------
+    def test_account_page_requires_a_session(self):
+        status, headers, _ = self.client().get('/account')
+        self.assertEqual(status, 303)
+        self.assertEqual(headers['Location'], '/login')
+
+    def test_member_can_change_their_own_password(self):
+        client, name = self.make_user('changer')
+        token = client.form_token('/account')
+        self.assertIsNotNone(token, 'no CSRF token on the account page')
+        status, _, _ = client.post('/account', {'csrf': token, 'current': PASSWORD,
+                                                'password': 'a-brand-new-password',
+                                                'confirm': 'a-brand-new-password'})
+        self.assertEqual(status, 303)
+        self.assertEqual(
+            self.client().post('/login', {'name': name, 'password': PASSWORD})[0], 401,
+            'the old password must stop working')
+        self.assertEqual(
+            self.client().post('/login', {'name': name,
+                                          'password': 'a-brand-new-password'})[0], 303)
+
+    def test_password_change_requires_the_current_password(self):
+        client, name = self.make_user('wrongcurrent')
+        token = client.form_token('/account')
+        status, _, body = client.post('/account', {'csrf': token, 'current': WRONG_PASSWORD,
+                                                   'password': 'another-new-password',
+                                                   'confirm': 'another-new-password'})
+        self.assertEqual(status, 403)
+        self.assertIn('current password is not correct', body)
+        self.assertEqual(
+            self.client().post('/login', {'name': name, 'password': PASSWORD})[0], 303,
+            'the password must be unchanged')
+
+    def test_password_change_rejects_a_mismatched_confirmation(self):
+        client, _ = self.make_user('mismatch')
+        token = client.form_token('/account')
+        status, _, body = client.post('/account', {'csrf': token, 'current': PASSWORD,
+                                                   'password': 'one-new-password-here',
+                                                   'confirm': 'a-different-new-one-here'})
+        self.assertEqual(status, 400)
+        self.assertIn('did not match', body)
+
+    def test_password_change_rejects_a_short_new_password(self):
+        client, _ = self.make_user('shortnew')
+        token = client.form_token('/account')
+        status, _, body = client.post('/account', {'csrf': token, 'current': PASSWORD,
+                                                   'password': 'tooshort',
+                                                   'confirm': 'tooshort'})
+        self.assertEqual(status, 400)
+        self.assertIn('12-128 characters', body)
+
+    def test_password_change_requires_csrf(self):
+        client, _ = self.make_user('pwcsrf')
+        status, _, _ = client.post('/account', {'csrf': 'forged', 'current': PASSWORD,
+                                                'password': 'brand-new-password-x',
+                                                'confirm': 'brand-new-password-x'})
+        self.assertEqual(status, 403)
+
+    def test_password_change_signs_out_other_devices_only(self):
+        first, name = self.make_user('twodevices')
+        second = self.client()
+        self.assertEqual(
+            second.post('/login', {'name': name, 'password': PASSWORD})[0], 303)
+        token = first.form_token('/account')
+        status, _, _ = first.post('/account', {'csrf': token, 'current': PASSWORD,
+                                               'password': 'changed-on-one-device',
+                                               'confirm': 'changed-on-one-device'})
+        self.assertEqual(status, 303)
+        self.assertEqual(second.get('/new')[0], 303, 'the other device should be signed out')
+        self.assertEqual(first.get('/new')[0], 200, 'this device should stay signed in')
+
+    def test_bootstrap_admin_promotes_when_no_moderator_exists(self):
+        _, name = self.make_user('bootstrapped')
+        self.execute('UPDATE users SET admin=0')
+        os.environ['FORUM_BOOTSTRAP_ADMIN'] = name
+        try:
+            server.bootstrap_admin()
+        finally:
+            del os.environ['FORUM_BOOTSTRAP_ADMIN']
+        self.assertEqual(
+            self.scalar('SELECT admin FROM users WHERE name=?', (name,)), 1,
+            'the named account should be promoted when nobody can moderate')
+        self.execute('UPDATE users SET admin=0')
+
+    def test_bootstrap_admin_leaves_an_existing_moderator_alone(self):
+        _, guardian = self.make_user('guardian')
+        self.promote(guardian)
+        _, candidate = self.make_user('candidate')
+        os.environ['FORUM_BOOTSTRAP_ADMIN'] = candidate
+        try:
+            server.bootstrap_admin()
+        finally:
+            del os.environ['FORUM_BOOTSTRAP_ADMIN']
+        self.assertEqual(
+            self.scalar('SELECT admin FROM users WHERE name=?', (candidate,)), 0,
+            'must not promote anyone while a moderator exists')
+
+    def test_bootstrap_admin_ignores_an_account_that_does_not_exist(self):
+        self.execute('UPDATE users SET admin=0')
+        os.environ['FORUM_BOOTSTRAP_ADMIN'] = 'nobody-at-all'
+        try:
+            server.bootstrap_admin()   # must not raise
+        finally:
+            del os.environ['FORUM_BOOTSTRAP_ADMIN']
+        self.assertEqual(self.scalar('SELECT count(*) FROM users WHERE admin=1'), 0)
+
     def test_topic_pages_use_article_metadata(self):
         client, _ = self.make_user('article')
         location = self.make_topic(

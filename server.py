@@ -19,6 +19,20 @@ def connect():
 def init():
  with connect() as c:
   c.executescript('''CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY,name TEXT UNIQUE NOT NULL,password TEXT NOT NULL,admin INTEGER DEFAULT 0); CREATE TABLE IF NOT EXISTS sessions(token TEXT PRIMARY KEY,user_id INTEGER REFERENCES users(id),csrf TEXT,expires REAL); CREATE TABLE IF NOT EXISTS topics(id INTEGER PRIMARY KEY,title TEXT,body TEXT,category TEXT,user_id INTEGER REFERENCES users(id),created TEXT DEFAULT CURRENT_TIMESTAMP,locked INTEGER DEFAULT 0); CREATE TABLE IF NOT EXISTS replies(id INTEGER PRIMARY KEY,topic_id INTEGER REFERENCES topics(id) ON DELETE CASCADE,user_id INTEGER REFERENCES users(id),body TEXT,created TEXT DEFAULT CURRENT_TIMESTAMP);''')
+def bootstrap_admin():
+ # Operator bootstrap, called at startup. Promotes a named account, but only
+ # while the forum has no moderator at all. Idempotent and self-disabling: once
+ # anyone can moderate this does nothing, so the forum can never be left with
+ # nobody able to lock or delete, and the account must already exist.
+ name=os.environ.get('FORUM_BOOTSTRAP_ADMIN','').strip()
+ if not name:return
+ with connect() as c:
+  if c.execute('SELECT count(*) FROM users WHERE admin=1').fetchone()[0]:return
+  row=c.execute('SELECT id FROM users WHERE name=?',(name,)).fetchone()
+  if not row:
+   print(f'FORUM_BOOTSTRAP_ADMIN: no account named {name!r} yet, nothing promoted',flush=True);return
+  c.execute('UPDATE users SET admin=1 WHERE id=?',(row['id'],))
+  print(f'FORUM_BOOTSTRAP_ADMIN: {name} is now a moderator',flush=True)
 def esc(v): return html.escape(str(v),quote=True)
 def password(p,salt=None):
  salt=salt or secrets.token_hex(16); return salt+':'+hashlib.scrypt(p.encode(),salt=salt.encode(),n=16384,r=8,p=1).hex()
@@ -73,7 +87,7 @@ class Handler(BaseHTTPRequestHandler):
   # Deliberately not the hero photograph: that one is CC BY-SA and link previews
   # drop the attribution its licence requires.
   image=SITE_URL+'/static/og-card.png'
-  nav=f'<a href="/new">Start a discussion</a><span>{esc(user["name"])}</span><form method="post" action="/logout"><input type="hidden" name="csrf" value="{user["csrf"]}"><button class="quiet">Sign out</button></form>' if user else '<a href="/login">Sign in</a><a class="button" href="/register">Join the community</a>'
+  nav=f'<a href="/new">Start a discussion</a><a href="/account">Account</a><span>{esc(user["name"])}</span><form method="post" action="/logout"><input type="hidden" name="csrf" value="{user["csrf"]}"><button class="quiet">Sign out</button></form>' if user else '<a href="/login">Sign in</a><a class="button" href="/register">Join the community</a>'
   return f'''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{esc(full_title)}</title><meta name="description" content="{esc(desc)}"><link rel="canonical" href="{esc(canonical)}"><meta property="og:site_name" content="Cybercab Forum"><meta property="og:type" content="{esc(og_type)}"><meta property="og:title" content="{esc(full_title)}"><meta property="og:description" content="{esc(desc)}"><meta property="og:url" content="{esc(canonical)}"><meta property="og:image" content="{esc(image)}"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="{esc(full_title)}"><meta name="twitter:description" content="{esc(desc)}"><meta name="twitter:image" content="{esc(image)}"><link rel="stylesheet" href="/style.css"></head><body><header><a class="brand" href="/"><img class="brand-mark" src="/static/forum-mark.svg" alt="" width="48" height="48"><b>CYBERCAB <span class="brand-forum">FORUM</span><span class="subtitle">INDEPENDENT COMMUNITY</span></b></a><nav>{nav}</nav></header><main>{content}</main><footer><b>CYBERCAB FORUM</b><p>Independent enthusiast community. Not affiliated with, endorsed by, or sponsored by Tesla, Inc. Tesla and Cybercab are trademarks of their respective owners.</p><a href="/guidelines">Community guidelines & privacy</a></footer></body></html>'''
  def form(self,user,action,fields,label):
   csrf=f'<input type="hidden" name="csrf" value="{user["csrf"]}">' if user else ''
@@ -97,7 +111,7 @@ class Handler(BaseHTTPRequestHandler):
    # Note: Render serves its own "disallow all" robots.txt while a free-tier
    # service is spun down. This service is on a paid plan and never spins down,
    # so this handler is always the one that answers.
-   body='User-agent: *\nAllow: /\nDisallow: /login\nDisallow: /register\nDisallow: /new\nDisallow: /reply/\nDisallow: /lock/\nDisallow: /delete/\nDisallow: /healthz\n\nSitemap: '+SITE_URL+'/sitemap.xml\n'
+   body='User-agent: *\nAllow: /\nDisallow: /login\nDisallow: /register\nDisallow: /new\nDisallow: /reply/\nDisallow: /lock/\nDisallow: /delete/\nDisallow: /account\nDisallow: /healthz\n\nSitemap: '+SITE_URL+'/sitemap.xml\n'
    raw=body.encode('utf-8');self.send_response(200);self.send_header('Content-Type','text/plain; charset=utf-8');self.send_header('Cache-Control','public, max-age=3600');self.send_header('Content-Length',str(len(raw)));self.end_headers();self.wfile.write(raw);return
   if path=='/sitemap.xml':
    with connect() as c:
@@ -140,6 +154,10 @@ class Handler(BaseHTTPRequestHandler):
     elif not u:content+='<p><a href="/login">Sign in</a> to join the discussion.</p>'
     else:content+='<p>This discussion is locked.</p>'
     if u and u['admin']:content+='<section class="moderation"><h3>Moderator controls</h3>'+self.form(u,f'/lock/{tid}','', 'Unlock topic' if r['locked'] else 'Lock topic')+self.form(u,f'/delete/{tid}','<label><input type="checkbox" name="confirm" value="yes" required> Permanently delete this topic and its replies</label>','Delete topic')+'</section>'
+   elif path=='/account':
+    if not u:self.send(303,'',location='/login');return
+    title='Your account'; canonical_path='/account'
+    content='<section class="panel"><h1>Your account</h1><p>Signed in as <b>'+esc(u['name'])+'</b>.</p><h2>Change password</h2>'+self.form(u,'/account','<label>Current password<input type="password" name="current" required autocomplete="current-password"></label><label>New password<input type="password" name="password" minlength="12" maxlength="128" required autocomplete="new-password"></label><label>Repeat new password<input type="password" name="confirm" minlength="12" maxlength="128" required autocomplete="new-password"></label>','Update password')+'</section>'
    elif path=='/guidelines':
     title='Guidelines & privacy';canonical_path='/guidelines';description='How the Cybercab Forum is moderated, and what happens to your account, posts and sessions.';content='<section class="panel"><h1>Guidelines & privacy</h1><h2>Keep it constructive</h2><p>No harassment, spam, impersonation, unlawful content, or personal information about others. Distinguish opinions from facts; link to sources for news. Do not post copyrighted material without permission. Moderators may lock or remove topics.</p><h2>Your information</h2><p>This forum stores your public username, a salted password hash, posts, and a seven-day session cookie. Posts and usernames are public. No analytics or advertising trackers are installed. Server access logs may include IP addresses. Do not reuse a sensitive password. Public registration is closed during deployment testing. Administrator access is assigned explicitly by the operator, never automatically to the first registrant.</p><h2>Early community</h2><p>This is an independent enthusiast forum, not a Tesla service. Information here is not financial, legal, or safety advice. For privacy or abuse issues, contact the site administrator by replying to their community welcome topic. The operator must publish a dedicated contact method before public launch.</p></section>'
    else:self.send(404,self.page('Not found','<h1>Page not found</h1>',u));return
@@ -179,6 +197,16 @@ class Handler(BaseHTTPRequestHandler):
    target='/'
    if path=='/logout':
     c.execute('DELETE FROM sessions WHERE token=?',(u['token'],));c.commit();self.send(303,'',cookie='session=; Max-Age=0; HttpOnly; SameSite=Lax; Path=/',location='/');return
+   elif path=='/account':
+    current=get('current');new=get('password');confirm=get('confirm')
+    if new!=confirm:fail('The new passwords did not match.');return
+    if not 12<=len(new)<=128:fail('Your new password must be 12-128 characters.');return
+    if not hmac.compare_digest(u['password'],password(current,u['password'].split(':')[0])):fail('Your current password is not correct.',403);return
+    c.execute('UPDATE users SET password=? WHERE id=?',(password(new),u['id']))
+    # Keep this device signed in and sign every other device out.
+    c.execute('DELETE FROM sessions WHERE user_id=? AND token<>?',(u['id'],u['token']))
+    c.commit()
+    self.send(303,'',location='/account');return
    elif path=='/new':
     title=get('title');body=get('body');category=get('category')
     if not title or len(title)>160 or not body or len(body)>20000 or category not in CATEGORIES:fail('Check your title, category, and post length.');return
@@ -203,4 +231,4 @@ class Handler(BaseHTTPRequestHandler):
    else:fail('Not found',404);return
   self.send(303,'',location=target)
 if __name__=='__main__':
- init();port=int(os.environ.get('PORT','8088'));host=os.environ.get('HOST','127.0.0.1');print(f'Cybercab Forum running at http://{host}:{port}',flush=True);http=ThreadingHTTPServer((host,port),Handler);http.socket.settimeout(30);http.serve_forever()
+ init();bootstrap_admin();port=int(os.environ.get('PORT','8088'));host=os.environ.get('HOST','127.0.0.1');print(f'Cybercab Forum running at http://{host}:{port}',flush=True);http=ThreadingHTTPServer((host,port),Handler);http.socket.settimeout(30);http.serve_forever()
