@@ -18,6 +18,7 @@ import tempfile
 import threading
 import unittest
 import urllib.parse
+import xml.etree.ElementTree
 from http.server import ThreadingHTTPServer
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -184,6 +185,42 @@ class ForumTests(unittest.TestCase):
         self.assertEqual(headers['X-Frame-Options'], 'DENY')
         self.assertEqual(headers['X-Content-Type-Options'], 'nosniff')
         self.assertIn("default-src 'self'", headers['Content-Security-Policy'])
+
+    def test_robots_txt_is_served_and_points_at_the_sitemap(self):
+        status, headers, body = self.client().get('/robots.txt')
+        self.assertEqual(status, 200)
+        self.assertIn('text/plain', headers['Content-Type'])
+        self.assertIn('Allow: /', body)
+        self.assertIn('Disallow: /login', body)
+        self.assertIn(f'Sitemap: {server.SITE_URL}/sitemap.xml', body)
+
+    def test_sitemap_lists_topics_and_is_well_formed_xml(self):
+        client, _ = self.make_user('sitemap')
+        location = self.make_topic(client, title='A topic the sitemap should list')
+        status, headers, body = self.client().get('/sitemap.xml')
+        self.assertEqual(status, 200)
+        self.assertIn('xml', headers['Content-Type'])
+        self.assertIn(f'{server.SITE_URL}/guidelines', body)
+        self.assertIn(f'{server.SITE_URL}{location}', body)
+        self.assertEqual(body.count('<url>'), body.count('</url>'))
+        xml.etree.ElementTree.fromstring(body)  # must parse
+
+    def test_pages_carry_canonical_and_open_graph_tags(self):
+        _, _, body = self.client().get('/')
+        self.assertIn(f'<link rel="canonical" href="{server.SITE_URL}/">', body)
+        self.assertIn('<meta property="og:title" content="Community · Cybercab Forum">', body)
+        self.assertIn(f'<meta property="og:image" content="{server.SITE_URL}/static/cybercab-web.jpg">', body)
+        self.assertIn('name="twitter:card"', body)
+
+    def test_topic_pages_use_article_metadata(self):
+        client, _ = self.make_user('article')
+        location = self.make_topic(
+            client, title='Metadata topic',
+            body='The quick brown fox jumps over the lazy dog.')
+        _, _, body = self.client().get(location)
+        self.assertIn(f'<link rel="canonical" href="{server.SITE_URL}{location}">', body)
+        self.assertIn('<meta property="og:type" content="article">', body)
+        self.assertIn('The quick brown fox jumps over the lazy dog.', body)
 
     def test_unknown_routes_return_404(self):
         client = self.client()

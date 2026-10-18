@@ -17,7 +17,9 @@ Then open http://127.0.0.1:8088.
 
 Environment variables: `HOST` (default 127.0.0.1), `PORT` (8088), `FORUM_DB`
 (database path), `FORUM_SECURE` (set to 1 behind production HTTPS),
-`FORUM_REGISTRATION_OPEN` (1 to accept new accounts; 0 by default).
+`FORUM_REGISTRATION_OPEN` (1 to accept new accounts; 0 by default),
+`FORUM_SITE_URL` (canonical origin used for links, canonical tags, Open Graph
+and the sitemap; defaults to `https://teslacybercabforum.com`).
 
 ## Included
 
@@ -27,14 +29,30 @@ Environment variables: `HOST` (default 127.0.0.1), `PORT` (8088), `FORUM_DB`
 - HttpOnly, SameSite=Lax session cookies, Secure when `FORUM_SECURE=1`
 - CSRF checks on every authenticated write, escaped post output, CSP and
   frame-denial headers, cross-origin POST rejection
-- Rate limiting on sign-in, registration and writes, keyed on the client
-  address from `X-Forwarded-For` so it works behind the hosting proxy
+- Rate limiting on sign-in, registration and writes, keyed on `CF-Connecting-IP`
+  and `True-Client-IP`, which Cloudflare overwrites and a client therefore
+  cannot forge. `X-Forwarded-For` is only a fallback: Cloudflare appends its own
+  edge address to it, so its last entry changes on every request, and a client
+  can prepend anything it likes to the front
 - Category browsing and search
 - Moderator topic locking and deletion, with confirmation
 - Responsive dark interface, guidelines/privacy page and independence
   disclaimer
 - Server-rendered pages, so threads are readable by search engines
 - No fabricated members, posts or activity
+
+## Search engines
+
+Pages are server-rendered, so crawlers see the threads without running
+JavaScript. `robots.txt` allows the forum and disallows the sign-in, posting
+and moderation paths. `/sitemap.xml` is generated from the database on every
+request and lists the homepage, the guidelines and each topic.
+
+Every page carries a canonical URL plus Open Graph and Twitter card tags, so a
+shared link previews with a title, description and image instead of a bare URL.
+Set `FORUM_SITE_URL` if the canonical origin is ever anything other than
+`https://teslacybercabforum.com`, otherwise the canonicals and sitemap will
+point at the wrong host.
 
 ## Moderators
 
@@ -46,18 +64,32 @@ registrant. It is assigned explicitly by the operator, which is what the
 python admin.py list                     # accounts, moderator flags, post counts
 python admin.py promote <username>       # grant moderator access
 python admin.py demote <username>        # revoke it, refusing to remove the last moderator
+python admin.py create-user <username>   # add an account while registration is closed
 python admin.py reset-password <username>
+python admin.py delete-user <username>   # refuses without --force if they have posted
 ```
 
-`reset-password` prompts for the password and needs a terminal. Without one —
-a hosting shell, a scheduled job — pipe it in and pass `--stdin`:
+The commands that need a password prompt for it and require a terminal. Without
+one — a hosting shell, a scheduled job — pipe it in and pass `--stdin`:
 
 ```powershell
+echo "the-new-password" | python admin.py create-user <username> --stdin
 echo "the-new-password" | python admin.py reset-password <username> --stdin
 ```
 
+`create-user` is how the operator's own account should be made, since the
+service ships with registration closed.
+
 Promote your own account **before** opening registration. Otherwise nobody can
 lock or remove anything, and the web interface offers no way to grant it.
+
+### Running these against the deployed service
+
+Use the Render dashboard's **Shell** tab. A one-off job will *not* work: Render
+allows a persistent disk on a single instance and a job runs in its own
+container, so it sees an empty directory at the mount path rather than the live
+database. A job that reports success there has written somewhere that never
+touches production.
 
 ## Verification
 
@@ -65,41 +97,58 @@ lock or remove anything, and the web interface offers no way to grant it.
 python -m unittest test_forum.py -v
 ```
 
-27 integration tests run the real HTTP server against a temporary database.
+34 integration tests run the real HTTP server against a temporary database.
 They cover registration and its closed state, sign-in and sign-out, session
 cookie flags, password hashing, CSRF rejection, cross-origin rejection,
 publishing, replies, HTML escaping, search, moderator locking and deletion with
-reply cascade, rate limiting and request-size limits. The suite never touches
-the real community database.
+reply cascade, rate limiting (including the production header shape and a
+forged `X-Forwarded-For`), `robots.txt`, the sitemap, canonical and Open Graph
+tags, and request-size limits. The suite never touches the real community
+database.
 
 ## Deployment
 
 The application runs on Render (Python 3.13.9) at
 **https://cybercab-forum.onrender.com**.
 
-Two things have to be true before this is a public forum:
+The service is a paid instance (`0.5c-512mb`) in the Ohio region, created by
+hand rather than from `render.yaml`.
 
-1. **Persistent storage.** Render's filesystem is ephemeral. Unless `FORUM_DB`
-   points inside an attached persistent disk, every deploy, restart and idle
-   spin-down destroys all accounts and posts. Disks require a paid instance
-   type. Check this in the dashboard rather than assuming it: while the
-   database is empty, the two states are indistinguishable from the outside.
-2. **Bootstrap, then open registration.** Promote your account with `admin.py`,
-   then set `FORUM_REGISTRATION_OPEN=1`. Doing it in the other order risks
-   making a stranger the moderator of an empty database.
+**Persistent storage.** Render's filesystem is ephemeral, so `FORUM_DB` has to
+point inside an attached disk or every deploy, restart and spin-down destroys
+every account and post. That is now the case: a 1 GB disk named `forum-data` is
+mounted at `/var/lib/forum`, and `FORUM_DB` is `/var/lib/forum/forum.db`.
 
-`render.yaml` in this repository names the service `teslacybercabforum`, which
-does not match the deployed service name `cybercab-forum`. Treat it as a
-starting point rather than a description of what is actually running, and
-confirm the live environment variables directly in the dashboard.
+The failure mode is silent. With an empty database, a working disk and an
+ephemeral `/tmp` path look identical from the outside, and the loss only shows
+up on the deploy after you have real members. To test it: register an account,
+trigger a redeploy, and check that the account is still there.
+
+**Bootstrap, then open registration.** Promote your account with `admin.py`,
+then set `FORUM_REGISTRATION_OPEN=1`. Doing it in the other order risks making
+a stranger the moderator of an empty database.
+
+`render.yaml` now describes the service as deployed, but it was not used to
+create the service and is not wired up now. Confirm settings in the dashboard
+rather than assuming the file is live.
 
 ### The custom domain
 
-`teslacybercabforum.com` currently serves the **static** build from the `main`
-branch on GitHub Pages. It does not point at this application. Repointing it
-means moving the apex to Render, removing `CNAME` from `main`, and clearing the
-custom domain in the repository's Pages settings so the two stop competing for
-the same hostname.
+Both `teslacybercabforum.com` and `www.teslacybercabforum.com` are already
+registered on the Render service, with `www` redirecting to the apex. They stay
+unverified until DNS points at Render:
+
+| Type | Host | Value |
+| --- | --- | --- |
+| `A` | `@` | `216.24.57.1` |
+| `CNAME` | `www` | `cybercab-forum.onrender.com` |
+
+Remove any `AAAA` records while you are there: Render is IPv4 only. Until the
+DNS moves, the apex still serves the **static** build from the `main` branch on
+GitHub Pages, and the two hosts compete for the same hostname. Retire the Pages
+site only *after* the domain resolves to Render — `main` holds the `CNAME` file
+and GitHub holds the Pages custom-domain setting, and deleting either before
+the switch leaves the domain dark.
 
 ## Files
 
@@ -107,7 +156,7 @@ the same hostname.
 - `admin.py` — operator CLI for moderators and password recovery
 - `test_forum.py` — end-to-end HTTP integration test
 - `style.css` — responsive visual design, includes the embedded display font
-- `render.yaml` — Render blueprint, currently out of sync with the live service
+- `render.yaml` — Render blueprint; describes the service but is not wired up
 - `forum.db` — local data, created on startup; keep private
 - `static/` — forum mark, web-sized photo, font licence
 
@@ -115,10 +164,12 @@ the same hostname.
 
 Deliberately absent. Worth knowing before inviting members.
 
-- Email verification, email password reset, self-service account deletion
+- Email verification and email password reset, so a lost password means asking
+  the operator to run `admin.py reset-password`
+- Self-service account deletion; removal is an operator action
 - Spam and bot controls beyond rate limiting
 - Per-reply moderation, reporting, account suspension
-- Sitemap or feed
+- A feed; the sitemap exists but there is no RSS or Atom
 
 Security and trademark review is still outstanding. The disclaimer does not
 guarantee the domain is free of trademark issues, and this community must not

@@ -7,6 +7,9 @@ ROOT=Path(__file__).parent
 DB=os.environ.get('FORUM_DB',str(ROOT/'forum.db'))
 REGISTRATION_OPEN=os.environ.get('FORUM_REGISTRATION_OPEN','0')=='1'
 CATEGORIES=['Cybercab discussion','Ownership & rides','Technology','Cities & regulations','Community']
+# The canonical origin for links, canonicals, Open Graph tags and the sitemap.
+SITE_URL=os.environ.get('FORUM_SITE_URL','https://teslacybercabforum.com').rstrip('/')
+DEFAULT_DESCRIPTION='An independent community for Cybercab discussion, technology, rides and the road ahead.'
 class Connection(sqlite3.Connection):
  def __exit__(self, *args):
   try: return super().__exit__(*args)
@@ -62,9 +65,13 @@ class Handler(BaseHTTPRequestHandler):
   except Exception:return None
   token=cookie['session'].value if 'session' in cookie else ''
   with connect() as c:return c.execute('SELECT users.*,sessions.csrf,sessions.token FROM sessions JOIN users ON users.id=user_id WHERE token=? AND expires>?',(token,time.time())).fetchone()
- def page(self,title,content,user=None):
+ def page(self,title,content,user=None,description=None,canonical_path='/',og_type='website'):
+  full_title=f'{title} · Cybercab Forum'
+  desc=description or DEFAULT_DESCRIPTION
+  canonical=SITE_URL+canonical_path
+  image=SITE_URL+'/static/cybercab-web.jpg'
   nav=f'<a href="/new">Start a discussion</a><span>{esc(user["name"])}</span><form method="post" action="/logout"><input type="hidden" name="csrf" value="{user["csrf"]}"><button class="quiet">Sign out</button></form>' if user else '<a href="/login">Sign in</a><a class="button" href="/register">Join the community</a>'
-  return f'''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{esc(title)} · Cybercab Forum</title><meta name="description" content="An independent community for Cybercab discussion, technology, rides and the road ahead."><link rel="stylesheet" href="/style.css"></head><body><header><a class="brand" href="/"><img class="brand-mark" src="/static/forum-mark.svg" alt="" width="48" height="48"><b>CYBERCAB <span class="brand-forum">FORUM</span><span class="subtitle">INDEPENDENT COMMUNITY</span></b></a><nav>{nav}</nav></header><main>{content}</main><footer><b>CYBERCAB FORUM</b><p>Independent enthusiast community. Not affiliated with, endorsed by, or sponsored by Tesla, Inc. Tesla and Cybercab are trademarks of their respective owners.</p><a href="/guidelines">Community guidelines & privacy</a></footer></body></html>'''
+  return f'''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{esc(full_title)}</title><meta name="description" content="{esc(desc)}"><link rel="canonical" href="{esc(canonical)}"><meta property="og:site_name" content="Cybercab Forum"><meta property="og:type" content="{esc(og_type)}"><meta property="og:title" content="{esc(full_title)}"><meta property="og:description" content="{esc(desc)}"><meta property="og:url" content="{esc(canonical)}"><meta property="og:image" content="{esc(image)}"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="{esc(full_title)}"><meta name="twitter:description" content="{esc(desc)}"><meta name="twitter:image" content="{esc(image)}"><link rel="stylesheet" href="/style.css"></head><body><header><a class="brand" href="/"><img class="brand-mark" src="/static/forum-mark.svg" alt="" width="48" height="48"><b>CYBERCAB <span class="brand-forum">FORUM</span><span class="subtitle">INDEPENDENT COMMUNITY</span></b></a><nav>{nav}</nav></header><main>{content}</main><footer><b>CYBERCAB FORUM</b><p>Independent enthusiast community. Not affiliated with, endorsed by, or sponsored by Tesla, Inc. Tesla and Cybercab are trademarks of their respective owners.</p><a href="/guidelines">Community guidelines & privacy</a></footer></body></html>'''
  def form(self,user,action,fields,label):
   csrf=f'<input type="hidden" name="csrf" value="{user["csrf"]}">' if user else ''
   return f'<form method="post" action="{action}">{csrf}{fields}<button>{label}</button></form>'
@@ -81,7 +88,22 @@ class Handler(BaseHTTPRequestHandler):
    self.send_response(200);self.send_header('Content-Type','image/jpeg');self.send_header('Cache-Control','public, max-age=86400');self.end_headers();self.wfile.write((ROOT/'static'/'cybercab-web.jpg').read_bytes());return
   if path=='/style.css':
    self.send_response(200);self.send_header('Content-Type','text/css');self.end_headers();self.wfile.write((ROOT/'style.css').read_bytes());return
-  content=''; title='Community'
+  if path=='/robots.txt':
+   # Note: Render serves its own "disallow all" robots.txt while a free-tier
+   # service is spun down. This service is on a paid plan and never spins down,
+   # so this handler is always the one that answers.
+   body='User-agent: *\nAllow: /\nDisallow: /login\nDisallow: /register\nDisallow: /new\nDisallow: /reply/\nDisallow: /lock/\nDisallow: /delete/\nDisallow: /healthz\n\nSitemap: '+SITE_URL+'/sitemap.xml\n'
+   raw=body.encode('utf-8');self.send_response(200);self.send_header('Content-Type','text/plain; charset=utf-8');self.send_header('Cache-Control','public, max-age=3600');self.send_header('Content-Length',str(len(raw)));self.end_headers();self.wfile.write(raw);return
+  if path=='/sitemap.xml':
+   with connect() as c:
+    topics=c.execute('SELECT id,created FROM topics ORDER BY id DESC LIMIT 5000').fetchall()
+   entries=['<url><loc>'+esc(SITE_URL+'/')+'</loc></url>','<url><loc>'+esc(SITE_URL+'/guidelines')+'</loc></url>']
+   for t in topics:
+    lastmod=esc(str(t['created']).replace(' ','T')+'Z') if t['created'] else ''
+    entries.append('<url><loc>'+esc(f'{SITE_URL}/topic/{t["id"]}')+'</loc>'+(f'<lastmod>{lastmod}</lastmod>' if lastmod else '')+'</url>')
+   body='<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'+''.join(entries)+'</urlset>'
+   raw=body.encode('utf-8');self.send_response(200);self.send_header('Content-Type','application/xml; charset=utf-8');self.send_header('Cache-Control','public, max-age=600');self.send_header('Content-Length',str(len(raw)));self.end_headers();self.wfile.write(raw);return
+  content=''; title='Community'; description=None; canonical_path='/'; og_type='website'
   with connect() as c:
    if path=='/':
     q=query.get('q',[''])[0][:100]; cat=query.get('category',[''])[0]
@@ -106,7 +128,7 @@ class Handler(BaseHTTPRequestHandler):
     except ValueError:self.send(404,self.page('Not found','<h1>Topic not found</h1>',u));return
     r=c.execute('SELECT topics.*,users.name FROM topics JOIN users ON users.id=topics.user_id WHERE topics.id=?',(tid,)).fetchone()
     if not r:self.send(404,self.page('Not found','<h1>Topic not found</h1>',u));return
-    title=r['title'];content=f'<a href="/">← All discussions</a><article class="post"><span class="tag">{esc(r["category"])}</span><h1>{esc(title)}</h1><p class="meta">{esc(r["name"])} · {r["created"]} UTC</p><div class="body">{esc(r["body"])}</div></article><h2>Replies</h2>'
+    title=r['title'];description=' '.join(r['body'].split())[:160];canonical_path=f'/topic/{tid}';og_type='article';content=f'<a href="/">← All discussions</a><article class="post"><span class="tag">{esc(r["category"])}</span><h1>{esc(title)}</h1><p class="meta">{esc(r["name"])} · {r["created"]} UTC</p><div class="body">{esc(r["body"])}</div></article><h2>Replies</h2>'
     for reply in c.execute('SELECT replies.*,users.name FROM replies JOIN users ON users.id=replies.user_id WHERE topic_id=? ORDER BY replies.id',(tid,)):
      content+=f'<article class="post"><b>{esc(reply["name"])}</b><small> · {reply["created"]} UTC</small><div class="body">{esc(reply["body"])}</div></article>'
     if u and not r['locked']:content+=self.form(u,f'/reply/{tid}','<label>Your reply<textarea name="body" rows="4" maxlength="20000" required></textarea></label>','Post reply')
@@ -114,9 +136,9 @@ class Handler(BaseHTTPRequestHandler):
     else:content+='<p>This discussion is locked.</p>'
     if u and u['admin']:content+='<section class="moderation"><h3>Moderator controls</h3>'+self.form(u,f'/lock/{tid}','', 'Unlock topic' if r['locked'] else 'Lock topic')+self.form(u,f'/delete/{tid}','<label><input type="checkbox" name="confirm" value="yes" required> Permanently delete this topic and its replies</label>','Delete topic')+'</section>'
    elif path=='/guidelines':
-    title='Guidelines & privacy';content='<section class="panel"><h1>Guidelines & privacy</h1><h2>Keep it constructive</h2><p>No harassment, spam, impersonation, unlawful content, or personal information about others. Distinguish opinions from facts; link to sources for news. Do not post copyrighted material without permission. Moderators may lock or remove topics.</p><h2>Your information</h2><p>This forum stores your public username, a salted password hash, posts, and a seven-day session cookie. Posts and usernames are public. No analytics or advertising trackers are installed. Server access logs may include IP addresses. Do not reuse a sensitive password. Public registration is closed during deployment testing. Administrator access is assigned explicitly by the operator, never automatically to the first registrant.</p><h2>Early community</h2><p>This is an independent enthusiast forum, not a Tesla service. Information here is not financial, legal, or safety advice. For privacy or abuse issues, contact the site administrator by replying to their community welcome topic. The operator must publish a dedicated contact method before public launch.</p></section>'
+    title='Guidelines & privacy';canonical_path='/guidelines';description='How the Cybercab Forum is moderated, and what happens to your account, posts and sessions.';content='<section class="panel"><h1>Guidelines & privacy</h1><h2>Keep it constructive</h2><p>No harassment, spam, impersonation, unlawful content, or personal information about others. Distinguish opinions from facts; link to sources for news. Do not post copyrighted material without permission. Moderators may lock or remove topics.</p><h2>Your information</h2><p>This forum stores your public username, a salted password hash, posts, and a seven-day session cookie. Posts and usernames are public. No analytics or advertising trackers are installed. Server access logs may include IP addresses. Do not reuse a sensitive password. Public registration is closed during deployment testing. Administrator access is assigned explicitly by the operator, never automatically to the first registrant.</p><h2>Early community</h2><p>This is an independent enthusiast forum, not a Tesla service. Information here is not financial, legal, or safety advice. For privacy or abuse issues, contact the site administrator by replying to their community welcome topic. The operator must publish a dedicated contact method before public launch.</p></section>'
    else:self.send(404,self.page('Not found','<h1>Page not found</h1>',u));return
-  self.send(200,self.page(title,content,u))
+  self.send(200,self.page(title,content,u,description=description,canonical_path=canonical_path,og_type=og_type))
  def do_POST(self):
   path=urlparse(self.path).path;u=self.session()
   try:size=int(self.headers.get('Content-Length','0'))

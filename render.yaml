@@ -1,11 +1,32 @@
+# Render blueprint for the Cybercab Forum.
+#
+# READ THIS FIRST
+# ---------------
+# The live service was created by hand and is NOT currently driven by this file.
+# It is named `cybercab-forum` (this file used to say `teslacybercabforum`, which
+# would have produced a different onrender.com host) and it deploys from the
+# `archive-python-forum` branch. Applying this as a Blueprint would reconcile
+# the service to exactly what is written here, so check every value against the
+# dashboard before syncing.
 services:
   - type: web
-    name: teslacybercabforum
+    name: cybercab-forum
     runtime: python
     plan: starter
+    region: ohio
+    branch: archive-python-forum
     buildCommand: python -m compileall -q server.py
     startCommand: python server.py
     healthCheckPath: /healthz
+    # Persistent storage. Without this, every deploy, restart and spin-down
+    # wipes every account and post, and the failure is invisible while the
+    # database happens to be empty.
+    #
+    # Attaching a disk also disables zero-downtime deploys for the service.
+    disk:
+      name: forum-data
+      mountPath: /var/lib/forum
+      sizeGB: 1
     envVars:
       - key: PYTHON_VERSION
         value: 3.13.9
@@ -15,5 +36,10 @@ services:
         value: "1"
       - key: FORUM_REGISTRATION_OPEN
         value: "0"
+      # Must point inside the disk mount path above. The previous value was
+      # /tmp/forum-preview.db, which Render wipes on every restart.
       - key: FORUM_DB
-        value: /tmp/forum-preview.db
+        value: /var/lib/forum/forum.db
+      # Canonical origin for links, canonical tags, Open Graph and the sitemap.
+      - key: FORUM_SITE_URL
+        value: https://teslacybercabforum.com
