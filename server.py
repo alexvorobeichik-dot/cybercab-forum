@@ -23,8 +23,22 @@ RATE={}
 RATE_LOCK=threading.Lock()
 RATE_SWEEP=86400
 def client_ip(headers,peer):
- forwarded=headers.get('X-Forwarded-For','')
- return (forwarded.split(',')[-1].strip() or peer) if forwarded else peer
+ # This service runs behind Render, whose ingress is Cloudflare. Cloudflare
+ # overwrites CF-Connecting-IP and True-Client-IP with the true client address
+ # (and refuses requests that try to supply CF-Connecting-IP themselves), so
+ # those are trustworthy. X-Forwarded-For is not: Cloudflare appends its own
+ # edge address after the client, so the last entry changes on every request,
+ # and any client can prepend forgeable entries to the front.
+ for name in ('CF-Connecting-IP','True-Client-IP','X-Real-IP'):
+  value=headers.get(name)
+  if value and value.strip():return value.strip()
+ # Fallback for a plain reverse proxy that only sets X-Forwarded-For. Our own
+ # edge appended the final entry, so the client is the one before it. The
+ # leading entry is never used: a client can put anything there.
+ forwarded=[part.strip() for part in headers.get('X-Forwarded-For','').split(',') if part.strip()]
+ if len(forwarded)>=2:return forwarded[-2]
+ if forwarded:return forwarded[0]
+ return peer
 def rate_limited(bucket,key,limit,window):
  now=time.time()
  with RATE_LOCK:
@@ -56,9 +70,6 @@ class Handler(BaseHTTPRequestHandler):
   return f'<form method="post" action="{action}">{csrf}{fields}<button>{label}</button></form>'
  def do_GET(self):
   u=self.session(); path=urlparse(self.path).path; query=parse_qs(urlparse(self.path).query)
-  if path=='/debug-proxy':
-   # TEMPORARY diagnostic: reports only caller-visible proxy headers, never cookies.
-   self.send(200,json.dumps({'peer':self.client_address[0],'forwarded_for':self.headers.get('X-Forwarded-For'),'cf_connecting_ip':self.headers.get('CF-Connecting-IP'),'x_real_ip':self.headers.get('X-Real-IP'),'true_client_ip':self.headers.get('True-Client-IP'),'computed_key':client_ip(self.headers,self.client_address[0]),'header_names':sorted(self.headers.keys())},indent=1));return
   if path=='/healthz':
    with connect() as c:c.execute('SELECT 1').fetchone()
    self.send(200,'ok');return

@@ -466,6 +466,50 @@ class ForumTests(unittest.TestCase):
             headers={'X-Forwarded-For': '198.51.100.4'})[0]
         self.assertNotEqual(other_client, 429, 'a different client must not be limited')
 
+    def test_rate_limit_uses_cf_connecting_ip_not_the_edge_address(self):
+        # The production shape. Cloudflare sets CF-Connecting-IP and appends its
+        # own edge address to X-Forwarded-For, so that final entry differs on
+        # every single request. Keying on it meant the limiter never fired at
+        # all once this was deployed behind Render.
+        for edge in range(12):
+            self.client().post('/login', {'name': 'ghost', 'password': WRONG_PASSWORD},
+                               headers={'CF-Connecting-IP': '203.0.113.50',
+                                        'X-Forwarded-For': f'203.0.113.50, 172.71.120.{edge}'})
+        status = self.client().post(
+            '/login', {'name': 'ghost', 'password': WRONG_PASSWORD},
+            headers={'CF-Connecting-IP': '203.0.113.50',
+                     'X-Forwarded-For': '203.0.113.50, 172.71.120.250'})[0]
+        self.assertEqual(status, 429, 'a stable CF-Connecting-IP must be limited even '
+                                      'though the edge entry keeps changing')
+
+    def test_forged_forwarded_for_prefix_cannot_evade_the_limit(self):
+        # Any client can prepend entries to X-Forwarded-For. Because Cloudflare
+        # overwrites CF-Connecting-IP, the bucket must not move when they do.
+        for index in range(12):
+            self.client().post('/login', {'name': 'ghost', 'password': WRONG_PASSWORD},
+                               headers={'CF-Connecting-IP': '203.0.113.60',
+                                        'X-Forwarded-For': f'10.9.9.{index}, 203.0.113.60'})
+        status = self.client().post(
+            '/login', {'name': 'ghost', 'password': WRONG_PASSWORD},
+            headers={'CF-Connecting-IP': '203.0.113.60',
+                     'X-Forwarded-For': '10.0.0.1, 203.0.113.60'})[0]
+        self.assertEqual(status, 429, 'forging an X-Forwarded-For prefix must not reset the limit')
+
+    def test_rate_limit_falls_back_to_the_entry_before_our_edge(self):
+        # With no Cloudflare headers, our own edge appended the final entry, so
+        # varying that one must not change the bucket but varying the client must.
+        for edge in range(12):
+            self.client().post('/login', {'name': 'ghost', 'password': WRONG_PASSWORD},
+                               headers={'X-Forwarded-For': f'203.0.113.70, 172.71.120.{edge}'})
+        same = self.client().post(
+            '/login', {'name': 'ghost', 'password': WRONG_PASSWORD},
+            headers={'X-Forwarded-For': '203.0.113.70, 172.71.120.250'})[0]
+        self.assertEqual(same, 429)
+        other = self.client().post(
+            '/login', {'name': 'ghost', 'password': WRONG_PASSWORD},
+            headers={'X-Forwarded-For': '203.0.113.71, 172.71.120.250'})[0]
+        self.assertNotEqual(other, 429)
+
     def test_cross_origin_posts_are_refused(self):
         client, _ = self.make_user('origin')
         token = client.form_token('/new')
