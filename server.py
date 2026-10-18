@@ -69,7 +69,10 @@ class Handler(BaseHTTPRequestHandler):
   full_title=f'{title} · Cybercab Forum'
   desc=description or DEFAULT_DESCRIPTION
   canonical=SITE_URL+canonical_path
-  image=SITE_URL+'/static/cybercab-web.jpg'
+  # Branded share card, generated from the site's own palette and display font.
+  # Deliberately not the hero photograph: that one is CC BY-SA and link previews
+  # drop the attribution its licence requires.
+  image=SITE_URL+'/static/og-card.png'
   nav=f'<a href="/new">Start a discussion</a><span>{esc(user["name"])}</span><form method="post" action="/logout"><input type="hidden" name="csrf" value="{user["csrf"]}"><button class="quiet">Sign out</button></form>' if user else '<a href="/login">Sign in</a><a class="button" href="/register">Join the community</a>'
   return f'''<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>{esc(full_title)}</title><meta name="description" content="{esc(desc)}"><link rel="canonical" href="{esc(canonical)}"><meta property="og:site_name" content="Cybercab Forum"><meta property="og:type" content="{esc(og_type)}"><meta property="og:title" content="{esc(full_title)}"><meta property="og:description" content="{esc(desc)}"><meta property="og:url" content="{esc(canonical)}"><meta property="og:image" content="{esc(image)}"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="{esc(full_title)}"><meta name="twitter:description" content="{esc(desc)}"><meta name="twitter:image" content="{esc(image)}"><link rel="stylesheet" href="/style.css"></head><body><header><a class="brand" href="/"><img class="brand-mark" src="/static/forum-mark.svg" alt="" width="48" height="48"><b>CYBERCAB <span class="brand-forum">FORUM</span><span class="subtitle">INDEPENDENT COMMUNITY</span></b></a><nav>{nav}</nav></header><main>{content}</main><footer><b>CYBERCAB FORUM</b><p>Independent enthusiast community. Not affiliated with, endorsed by, or sponsored by Tesla, Inc. Tesla and Cybercab are trademarks of their respective owners.</p><a href="/guidelines">Community guidelines & privacy</a></footer></body></html>'''
  def form(self,user,action,fields,label):
@@ -86,6 +89,8 @@ class Handler(BaseHTTPRequestHandler):
    self.send_response(200);self.send_header('Content-Type','image/svg+xml');self.end_headers();self.wfile.write((ROOT/'static'/'forum-mark.svg').read_bytes());return
   if path=='/static/cybercab-web.jpg':
    self.send_response(200);self.send_header('Content-Type','image/jpeg');self.send_header('Cache-Control','public, max-age=86400');self.end_headers();self.wfile.write((ROOT/'static'/'cybercab-web.jpg').read_bytes());return
+  if path=='/static/og-card.png':
+   self.send_response(200);self.send_header('Content-Type','image/png');self.send_header('Cache-Control','public, max-age=86400');self.end_headers();self.wfile.write((ROOT/'static'/'og-card.png').read_bytes());return
   if path=='/style.css':
    self.send_response(200);self.send_header('Content-Type','text/css');self.end_headers();self.wfile.write((ROOT/'style.css').read_bytes());return
   if path=='/robots.txt':

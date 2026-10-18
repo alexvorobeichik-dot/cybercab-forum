@@ -209,8 +209,16 @@ class ForumTests(unittest.TestCase):
         _, _, body = self.client().get('/')
         self.assertIn(f'<link rel="canonical" href="{server.SITE_URL}/">', body)
         self.assertIn('<meta property="og:title" content="Community · Cybercab Forum">', body)
-        self.assertIn(f'<meta property="og:image" content="{server.SITE_URL}/static/cybercab-web.jpg">', body)
+        self.assertIn(f'<meta property="og:image" content="{server.SITE_URL}/static/og-card.png">', body)
         self.assertIn('name="twitter:card"', body)
+
+    def test_share_card_is_actually_served(self):
+        # The Open Graph tags point at this file, so a missing or renamed asset
+        # would leave every shared link with a broken preview.
+        status, headers, body = self.client().get('/static/og-card.png')
+        self.assertEqual(status, 200)
+        self.assertEqual(headers['Content-Type'], 'image/png')
+        self.assertTrue(body.startswith('\x89PNG\r\n'))
 
     def test_topic_pages_use_article_metadata(self):
         client, _ = self.make_user('article')

@@ -158,7 +158,7 @@ the switch leaves the domain dark.
 - `style.css` — responsive visual design, includes the embedded display font
 - `render.yaml` — Render blueprint; describes the service but is not wired up
 - `forum.db` — local data, created on startup; keep private
-- `static/` — forum mark, web-sized photo, font licence
+- `static/` — share card, forum mark, web-sized photo, font licence
 
 ## Not implemented
 
