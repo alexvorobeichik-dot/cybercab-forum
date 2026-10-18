@@ -18,7 +18,11 @@ def connect():
  c=sqlite3.connect(DB,factory=Connection); c.row_factory=sqlite3.Row; c.execute('PRAGMA foreign_keys=ON'); return c
 def init():
  with connect() as c:
-  c.executescript('''CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY,name TEXT UNIQUE NOT NULL,password TEXT NOT NULL,admin INTEGER DEFAULT 0); CREATE TABLE IF NOT EXISTS sessions(token TEXT PRIMARY KEY,user_id INTEGER REFERENCES users(id),csrf TEXT,expires REAL); CREATE TABLE IF NOT EXISTS topics(id INTEGER PRIMARY KEY,title TEXT,body TEXT,category TEXT,user_id INTEGER REFERENCES users(id),created TEXT DEFAULT CURRENT_TIMESTAMP,locked INTEGER DEFAULT 0); CREATE TABLE IF NOT EXISTS replies(id INTEGER PRIMARY KEY,topic_id INTEGER REFERENCES topics(id) ON DELETE CASCADE,user_id INTEGER REFERENCES users(id),body TEXT,created TEXT DEFAULT CURRENT_TIMESTAMP);''')
+  c.executescript('''CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY,name TEXT UNIQUE NOT NULL,password TEXT NOT NULL,admin INTEGER DEFAULT 0); CREATE TABLE IF NOT EXISTS sessions(token TEXT PRIMARY KEY,user_id INTEGER REFERENCES users(id),csrf TEXT,expires REAL); CREATE TABLE IF NOT EXISTS topics(id INTEGER PRIMARY KEY,title TEXT,body TEXT,category TEXT,user_id INTEGER REFERENCES users(id),created TEXT DEFAULT CURRENT_TIMESTAMP,locked INTEGER DEFAULT 0,edited TEXT); CREATE TABLE IF NOT EXISTS replies(id INTEGER PRIMARY KEY,topic_id INTEGER REFERENCES topics(id) ON DELETE CASCADE,user_id INTEGER REFERENCES users(id),body TEXT,created TEXT DEFAULT CURRENT_TIMESTAMP,edited TEXT);''')
+  # Additive migration for databases created before post editing existed.
+  for table in ('topics','replies'):
+   if 'edited' not in {r['name'] for r in c.execute(f'PRAGMA table_info({table})')}:
+    c.execute(f'ALTER TABLE {table} ADD COLUMN edited TEXT')
 def bootstrap_admin():
  # Operator bootstrap, called at startup. Promotes a named account, but only
  # while the forum has no moderator at all. Idempotent and self-disabling: once
@@ -111,7 +115,7 @@ class Handler(BaseHTTPRequestHandler):
    # Note: Render serves its own "disallow all" robots.txt while a free-tier
    # service is spun down. This service is on a paid plan and never spins down,
    # so this handler is always the one that answers.
-   body='User-agent: *\nAllow: /\nDisallow: /login\nDisallow: /register\nDisallow: /new\nDisallow: /reply/\nDisallow: /lock/\nDisallow: /delete/\nDisallow: /account\nDisallow: /healthz\n\nSitemap: '+SITE_URL+'/sitemap.xml\n'
+   body='User-agent: *\nAllow: /\nDisallow: /login\nDisallow: /register\nDisallow: /new\nDisallow: /reply/\nDisallow: /lock/\nDisallow: /delete/\nDisallow: /edit/\nDisallow: /account\nDisallow: /healthz\n\nSitemap: '+SITE_URL+'/sitemap.xml\n'
    raw=body.encode('utf-8');self.send_response(200);self.send_header('Content-Type','text/plain; charset=utf-8');self.send_header('Cache-Control','public, max-age=3600');self.send_header('Content-Length',str(len(raw)));self.end_headers();self.wfile.write(raw);return
   if path=='/sitemap.xml':
    with connect() as c:
@@ -147,13 +151,40 @@ class Handler(BaseHTTPRequestHandler):
     except ValueError:self.send(404,self.page('Not found','<h1>Topic not found</h1>',u));return
     r=c.execute('SELECT topics.*,users.name FROM topics JOIN users ON users.id=topics.user_id WHERE topics.id=?',(tid,)).fetchone()
     if not r:self.send(404,self.page('Not found','<h1>Topic not found</h1>',u));return
-    title=r['title'];description=' '.join(r['body'].split())[:160];canonical_path=f'/topic/{tid}';og_type='article';content=f'<a href="/">← All discussions</a><article class="post"><span class="tag">{esc(r["category"])}</span><h1>{esc(title)}</h1><p class="meta">{esc(r["name"])} · {r["created"]} UTC</p><div class="body">{esc(r["body"])}</div></article><h2>Replies</h2>'
+    edited_note=(' · edited '+str(r['edited'])+' UTC') if r['edited'] else ''
+    can_edit=(' · <a href="/edit/topic/'+str(tid)+'">edit</a>') if u and u['id']==r['user_id'] else ''
+    title=r['title'];description=' '.join(r['body'].split())[:160];canonical_path=f'/topic/{tid}';og_type='article';content=f'<a href="/">← All discussions</a><article class="post"><span class="tag">{esc(r["category"])}</span><h1>{esc(title)}</h1><p class="meta">{esc(r["name"])} · {r["created"]} UTC{edited_note}{can_edit}</p><div class="body">{esc(r["body"])}</div></article><h2>Replies</h2>'
     for reply in c.execute('SELECT replies.*,users.name FROM replies JOIN users ON users.id=replies.user_id WHERE topic_id=? ORDER BY replies.id',(tid,)):
-     content+=f'<article class="post"><b>{esc(reply["name"])}</b><small> · {reply["created"]} UTC</small><div class="body">{esc(reply["body"])}</div></article>'
+     reply_edited=(' · edited '+str(reply['edited'])+' UTC') if reply['edited'] else ''
+     reply_edit=(' · <a href="/edit/reply/'+str(reply['id'])+'">edit</a>') if u and u['id']==reply['user_id'] else ''
+     content+=f'<article class="post"><b>{esc(reply["name"])}</b><small> · {reply["created"]} UTC{reply_edited}{reply_edit}</small><div class="body">{esc(reply["body"])}</div></article>'
     if u and not r['locked']:content+=self.form(u,f'/reply/{tid}','<label>Your reply<textarea name="body" rows="4" maxlength="20000" required></textarea></label>','Post reply')
     elif not u:content+='<p><a href="/login">Sign in</a> to join the discussion.</p>'
     else:content+='<p>This discussion is locked.</p>'
     if u and u['admin']:content+='<section class="moderation"><h3>Moderator controls</h3>'+self.form(u,f'/lock/{tid}','', 'Unlock topic' if r['locked'] else 'Lock topic')+self.form(u,f'/delete/{tid}','<label><input type="checkbox" name="confirm" value="yes" required> Permanently delete this topic and its replies</label>','Delete topic')+'</section>'
+   elif path.startswith('/edit/'):
+    parts=path.split('/')
+    if not u:self.send(303,'',location='/login');return
+    if len(parts)!=4 or parts[2] not in ('topic','reply'):
+     self.send(404,self.page('Not found','<h1>Page not found</h1>',u));return
+    try:item_id=int(parts[3])
+    except ValueError:
+     self.send(404,self.page('Not found','<h1>Page not found</h1>',u));return
+    row=c.execute('SELECT * FROM topics WHERE id=?',(item_id,)).fetchone() if parts[2]=='topic' else c.execute('SELECT * FROM replies WHERE id=?',(item_id,)).fetchone()
+    if not row:
+     self.send(404,self.page('Not found','<h1>Post not found</h1>',u));return
+    if row['user_id']!=u['id']:
+     self.send(403,self.page('Not allowed','<section class="panel"><h1>You can only edit your own posts.</h1><p>This one was written by someone else. A moderator can lock or delete a topic, but cannot rewrite it.</p><a href="/">Return to the forum</a></section>',u));return
+    title='Edit '+parts[2]; canonical_path='/edit/'+parts[2]+'/'+str(item_id)
+    if parts[2]=='topic':
+     fields=('<label>Title<input name="title" maxlength="160" required value="'+esc(row['title'])+'"></label>'
+      +'<label>Category<select name="category">'+''.join('<option'+(' selected' if x==row['category'] else '')+'>'+esc(x)+'</option>' for x in CATEGORIES)+'</select></label>'
+      +'<label>Your post<textarea name="body" rows="8" maxlength="20000" required>'+esc(row['body'])+'</textarea></label>')
+    else:
+     fields='<label>Your reply<textarea name="body" rows="4" maxlength="20000" required>'+esc(row['body'])+'</textarea></label>'
+    content=('<section class="panel"><h1>Edit '+parts[2]+'</h1><p>You are editing your own post. The topic will show that it was edited, and when.</p>'
+     +self.form(u,f'/edit/{parts[2]}/{item_id}',fields,'Save changes')
+     +'</section>')
    elif path=='/account':
     if not u:self.send(303,'',location='/login');return
     title='Your account'; canonical_path='/account'
@@ -228,6 +259,24 @@ class Handler(BaseHTTPRequestHandler):
      else:
       if get('confirm')!='yes':fail('Confirm deletion first');return
       c.execute('DELETE FROM topics WHERE id=?',(tid,));target='/'
+   elif path.startswith('/edit/'):
+    parts=path.split('/')
+    if len(parts)!=4 or parts[2] not in ('topic','reply'):fail('Not found',404);return
+    try:item_id=int(parts[3])
+    except ValueError:fail('Invalid post');return
+    row=c.execute('SELECT * FROM topics WHERE id=?',(item_id,)).fetchone() if parts[2]=='topic' else c.execute('SELECT * FROM replies WHERE id=?',(item_id,)).fetchone()
+    if not row:fail('Post not found',404);return
+    if row['user_id']!=u['id']:fail('You can only edit your own posts.',403);return
+    if parts[2]=='topic':
+     title=get('title');body=get('body');category=get('category')
+     if not title or len(title)>160 or not body or len(body)>20000 or category not in CATEGORIES:fail('Check your title, category, and post length.');return
+     c.execute('UPDATE topics SET title=?,body=?,category=?,edited=CURRENT_TIMESTAMP WHERE id=?',(title,body,category,item_id))
+     target=f'/topic/{item_id}'
+    else:
+     body=get('body')
+     if not body or len(body)>20000:fail('Reply must contain 1-20,000 characters.');return
+     c.execute('UPDATE replies SET body=?,edited=CURRENT_TIMESTAMP WHERE id=?',(body,item_id))
+     target=f'/topic/{row["topic_id"]}'
    else:fail('Not found',404);return
   self.send(303,'',location=target)
 if __name__=='__main__':

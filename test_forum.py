@@ -334,6 +334,152 @@ class ForumTests(unittest.TestCase):
             del os.environ['FORUM_BOOTSTRAP_ADMIN']
         self.assertEqual(self.scalar('SELECT count(*) FROM users WHERE admin=1'), 0)
 
+    # ------------------------------------------------------------------
+    # editing your own posts
+    # ------------------------------------------------------------------
+    def test_author_can_edit_their_own_topic(self):
+        client, name = self.make_user('editor')
+        location = self.make_topic(client, title='Original title', body='Original body.')
+        topic_id = location.rsplit('/', 1)[1]
+
+        status, _, form = client.get(f'/edit/topic/{topic_id}')
+        self.assertEqual(status, 200)
+        self.assertIn('value="Original title"', form, 'the form must be pre-filled')
+        self.assertIn('Original body.', form)
+
+        token = client.form_token(f'/edit/topic/{topic_id}')
+        status, headers, _ = client.post(f'/edit/topic/{topic_id}', {
+            'csrf': token, 'title': 'Revised title',
+            'category': 'Technology', 'body': 'Revised body.'})
+        self.assertEqual(status, 303)
+        self.assertEqual(headers['Location'], location)
+
+        _, _, page = client.get(location)
+        self.assertIn('Revised title', page)
+        self.assertIn('Revised body.', page)
+        self.assertNotIn('Original body.', page)
+        self.assertIn(name, page, 'editing must not change the author')
+        self.assertIn('edited', page, 'an edit must be marked')
+        self.assertIsNotNone(
+            self.scalar('SELECT edited FROM topics WHERE id=?', (int(topic_id),)))
+
+    def test_only_the_author_can_edit_a_topic(self):
+        author, _ = self.make_user('owner')
+        location = self.make_topic(author, title='Owned topic')
+        topic_id = location.rsplit('/', 1)[1]
+
+        outsider, _ = self.make_user('meddler')
+        self.assertEqual(outsider.get(f'/edit/topic/{topic_id}')[0], 403,
+                         'the edit form must be refused')
+        # A valid CSRF token for their own session, so the request reaches the
+        # ownership check rather than being stopped by CSRF first.
+        token = outsider.form_token('/new')
+        status, _, _ = outsider.post(f'/edit/topic/{topic_id}', {
+            'csrf': token, 'title': 'Hijacked',
+            'category': 'Technology', 'body': 'Hijacked.'})
+        self.assertEqual(status, 403, 'the write must be refused too')
+        self.assertIn('Owned topic', self.client().get(location)[2], 'unchanged')
+
+    def test_editing_requires_a_session_and_a_csrf_token(self):
+        client, _ = self.make_user('guardedit')
+        location = self.make_topic(client)
+        topic_id = location.rsplit('/', 1)[1]
+        self.assertEqual(self.client().get(f'/edit/topic/{topic_id}')[0], 303)
+        self.assertEqual(self.client().post(f'/edit/topic/{topic_id}', {
+            'csrf': 'x', 'title': 'y', 'category': 'Technology', 'body': 'z'})[0], 401)
+        status, _, _ = client.post(f'/edit/topic/{topic_id}', {
+            'csrf': 'forged', 'title': 'y', 'category': 'Technology', 'body': 'z'})
+        self.assertEqual(status, 403)
+
+    def test_author_can_edit_their_own_reply(self):
+        client, _ = self.make_user('replyedit')
+        location = self.make_topic(client)
+        topic_id = location.rsplit('/', 1)[1]
+        token = client.form_token(location)
+        client.post(f'/reply/{topic_id}', {'csrf': token, 'body': 'First version.'})
+        reply_id = self.scalar('SELECT id FROM replies WHERE topic_id=?', (int(topic_id),))
+
+        status, _, form = client.get(f'/edit/reply/{reply_id}')
+        self.assertEqual(status, 200)
+        self.assertIn('First version.', form)
+
+        token = client.form_token(f'/edit/reply/{reply_id}')
+        status, _, _ = client.post(f'/edit/reply/{reply_id}',
+                                   {'csrf': token, 'body': 'Second version.'})
+        self.assertEqual(status, 303)
+        _, _, page = client.get(location)
+        self.assertIn('Second version.', page)
+        self.assertNotIn('First version.', page)
+
+    def test_only_the_author_can_edit_a_reply(self):
+        author, _ = self.make_user('replyowner')
+        location = self.make_topic(author)
+        topic_id = location.rsplit('/', 1)[1]
+        token = author.form_token(location)
+        author.post(f'/reply/{topic_id}', {'csrf': token, 'body': 'The original reply.'})
+        reply_id = self.scalar('SELECT id FROM replies WHERE topic_id=?', (int(topic_id),))
+
+        outsider, _ = self.make_user('replymeddler')
+        self.assertEqual(outsider.get(f'/edit/reply/{reply_id}')[0], 403)
+        token = outsider.form_token('/new')
+        self.assertEqual(outsider.post(f'/edit/reply/{reply_id}',
+                                       {'csrf': token, 'body': 'Rewritten.'})[0], 403)
+        self.assertIn('The original reply.', self.client().get(location)[2])
+
+    def test_editing_rejects_invalid_input(self):
+        client, _ = self.make_user('badedit')
+        location = self.make_topic(client)
+        topic_id = location.rsplit('/', 1)[1]
+        token = client.form_token(f'/edit/topic/{topic_id}')
+        self.assertEqual(client.post(f'/edit/topic/{topic_id}', {
+            'csrf': token, 'title': 'x' * 161,
+            'category': 'Technology', 'body': 'fine'})[0], 400)
+        token = client.form_token(f'/edit/topic/{topic_id}')
+        self.assertEqual(client.post(f'/edit/topic/{topic_id}', {
+            'csrf': token, 'title': 'fine',
+            'category': 'Not A Category', 'body': 'fine'})[0], 400)
+
+    def test_editing_an_unknown_post_is_a_404(self):
+        client, _ = self.make_user('missingedit')
+        for path in ('/edit/topic/999999', '/edit/reply/999999',
+                     '/edit/bogus/1', '/edit/topic/not-a-number'):
+            with self.subTest(path=path):
+                self.assertEqual(client.get(path)[0], 404)
+
+    def test_migration_adds_the_edited_column_to_an_older_database(self):
+        # Production already had data when editing was added, and its tables
+        # have no `edited` column. If the migration fails, init() raises and the
+        # service refuses to start, so this checks the real upgrade path.
+        legacy = os.path.join(TEST_DIR, 'legacy.db')
+        con = sqlite3.connect(legacy)
+        con.executescript(
+            'CREATE TABLE users(id INTEGER PRIMARY KEY,name TEXT UNIQUE NOT NULL,'
+            'password TEXT NOT NULL,admin INTEGER DEFAULT 0);'
+            'CREATE TABLE topics(id INTEGER PRIMARY KEY,title TEXT,body TEXT,category TEXT,'
+            'user_id INTEGER,created TEXT DEFAULT CURRENT_TIMESTAMP,locked INTEGER DEFAULT 0);'
+            'CREATE TABLE replies(id INTEGER PRIMARY KEY,topic_id INTEGER,user_id INTEGER,'
+            'body TEXT,created TEXT DEFAULT CURRENT_TIMESTAMP);')
+        con.execute('INSERT INTO topics(title,body,category,user_id) VALUES(?,?,?,?)',
+                    ('Pre-existing topic', 'Body.', 'Technology', 1))
+        con.commit()
+        con.close()
+
+        original = server.DB
+        server.DB = legacy
+        try:
+            server.init()
+            con = sqlite3.connect(legacy)
+            topics = {r[1] for r in con.execute('PRAGMA table_info(topics)')}
+            replies = {r[1] for r in con.execute('PRAGMA table_info(replies)')}
+            surviving = con.execute('SELECT title FROM topics').fetchone()[0]
+            con.close()
+        finally:
+            server.DB = original
+
+        self.assertIn('edited', topics, 'topics must gain the column')
+        self.assertIn('edited', replies, 'replies must gain the column')
+        self.assertEqual(surviving, 'Pre-existing topic', 'existing rows must survive')
+
     def test_topic_pages_use_article_metadata(self):
         client, _ = self.make_user('article')
         location = self.make_topic(
