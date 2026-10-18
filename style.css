@@ -40,3 +40,6 @@ th{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--mute
 td{color:var(--muted)}
 td b{color:#f2f4ed}
 tr:last-child td{border-bottom:0}
+/* Inline SVG chart on /service-areas. Scales with the column so it stays
+   readable on a phone, and the viewBox keeps the aspect ratio. */
+.chart{width:100%;height:auto;display:block;margin:24px 0}

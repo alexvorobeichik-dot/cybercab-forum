@@ -577,6 +577,16 @@ class ForumTests(unittest.TestCase):
         self.assertIn('Phoenix', body)
         self.assertIn('Approved or preparing', body)
 
+    def test_service_areas_page_charts_the_registration_data(self):
+        _, _, body = self.client().get('/service-areas')
+        self.assertIn('<svg', body)
+        self.assertIn('class="chart"', body)
+        self.assertIn('role="img"', body, 'the chart needs an accessible name')
+        for label, value in server.CYBERCAB_REGISTRATIONS:
+            with self.subTest(point=label):
+                self.assertIn(label, body)
+                self.assertIn(f'>{value}<', body)
+
     def test_regulations_page_lists_every_jurisdiction(self):
         status, _, body = self.client().get('/regulations')
         self.assertEqual(status, 200)

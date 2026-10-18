@@ -17,6 +17,10 @@ DEFAULT_DESCRIPTION='An independent community for Cybercab discussion, technolog
 # unsourced claim does not belong in them. Edit the tables, then bump
 # REFERENCE_UPDATED: the pages render straight from this.
 REFERENCE_UPDATED='18 October 2026'
+# Texas DMV registrations for commercial Cybercab use, which is the only
+# independent count that exists while Tesla declines to publish one. Rendered
+# as a chart from the same numbers the page cites, so there is one source.
+CYBERCAB_REGISTRATIONS=[('3 Sep 2026',45),('2 Oct 2026',169),('12 Oct 2026',319)]
 SERVICE_AREAS=[
  {'city':'Austin','state':'TX','since':'22 Jun 2025','mode':'Unsupervised, ramping',
   'cybercab':'Live since 3 Sep 2026',
@@ -70,6 +74,21 @@ REGULATIONS=[
   'source_name':'Electrek, CPUC','source':'https://electrek.co/2026/03/25/california-regulator-confirms-tesla-not-operating-autonomous-vehicle-service/'},
 ]
 # ---------------------------------------------------------------------------
+def bar_chart(series,label):
+ # Inline SVG, drawn from the same table the page shows rather than from a
+ # second copy baked into an image file, so the numbers cannot drift apart.
+ top=max(v for _,v in series) or 1
+ w,h=640,270; pad=54; base=h-58
+ span=w-2*pad; slot=span//len(series); bw=min(118,slot-30)
+ out=[f'<svg viewBox="0 0 {w} {h}" role="img" aria-label="{esc(label)}" class="chart">']
+ for i,(caption,value) in enumerate(series):
+  x=pad+i*slot+(slot-bw)//2; bh=round((base-24)*(value/top)); y=base-bh
+  out.append(f'<rect x="{x}" y="{y}" width="{bw}" height="{bh}" rx="4" fill="var(--accent)"/>')
+  out.append(f'<text x="{x+bw//2}" y="{y-12}" text-anchor="middle" fill="#f2f4ed" font-size="23" font-weight="600">{value}</text>')
+  out.append(f'<text x="{x+bw//2}" y="{base+28}" text-anchor="middle" fill="#a3ada1" font-size="15">{esc(caption)}</text>')
+ out.append(f'<line x1="{pad-14}" y1="{base}" x2="{w-pad+14}" y2="{base}" stroke="#30362f" stroke-width="1"/>')
+ out.append('</svg>')
+ return ''.join(out)
 def ref_table(columns,rows):
  out=['<div class="table-wrap"><table><thead><tr>']+['<th>'+esc(c)+'</th>' for c in columns]+['</tr></thead><tbody>']
  for row in rows:out.append('<tr>'+''.join('<td>'+cell+'</td>' for cell in row)+'</tr>')
@@ -314,6 +333,9 @@ class Handler(BaseHTTPRequestHandler):
     content=('<a href="/">← All discussions</a><section class="panel"><h1>Where the Tesla robotaxi runs</h1>'
      +'<p>Robotaxi is the service. Cybercab is the purpose-built two-seater, and it is not where most of the service is. This table is what is carrying passengers now rather than what has been announced.</p>'
      +ref_table(['Market','Robotaxi since','Mode','Cybercab','Notes'],rows)
+     +'<h2>Cybercabs registered in Texas</h2>'
+     +bar_chart(CYBERCAB_REGISTRATIONS,'Cybercabs registered for commercial use in Texas, 45 at launch rising to 319 in six weeks')
+     +'<p class="meta">Texas DMV registrations, the only independent count available while Tesla does not publish one. At launch it was 45.</p>'
      +'<h2>Approved or preparing, not yet carrying passengers</h2>'
      +ref_table(['Market','Status','Notes'],planned)
      +'<p class="meta">Last checked '+esc(REFERENCE_UPDATED)+'. Fleet numbers come from state registrations where they exist, because operators do not publish them consistently. Corrections welcome in the forum.</p>'
