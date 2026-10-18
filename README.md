@@ -35,6 +35,10 @@ and the sitemap; defaults to `https://teslacybercabforum.com`).
   edge address to it, so its last entry changes on every request, and a client
   can prepend anything it likes to the front
 - Category browsing and search
+- Authors can edit their own topics and replies, and the post shows when it was
+  last edited. A moderator can lock or delete a post but **cannot rewrite it** —
+  only its author can change what it says. A moderator quietly editing someone
+  else's words would be worse than having no editing at all
 - Moderator topic locking and deletion, with confirmation
 - Responsive dark interface, guidelines/privacy page and independence
   disclaimer
@@ -97,14 +101,16 @@ touches production.
 python -m unittest test_forum.py -v
 ```
 
-34 integration tests run the real HTTP server against a temporary database.
+53 integration tests run the real HTTP server against a temporary database.
 They cover registration and its closed state, sign-in and sign-out, session
-cookie flags, password hashing, CSRF rejection, cross-origin rejection,
-publishing, replies, HTML escaping, search, moderator locking and deletion with
-reply cascade, rate limiting (including the production header shape and a
-forged `X-Forwarded-For`), `robots.txt`, the sitemap, canonical and Open Graph
-tags, and request-size limits. The suite never touches the real community
-database.
+cookie flags, password hashing, self-service password change, CSRF rejection,
+cross-origin rejection, publishing, replies, editing your own posts (including
+that nobody else can), HTML escaping, search, moderator locking and deletion
+with reply cascade, rate limiting (including the production header shape and a
+forged `X-Forwarded-For`), the operator bootstrap for the first moderator, the
+additive schema migration for databases that predate editing, `robots.txt`, the
+sitemap, canonical and Open Graph tags, and request-size limits. The suite never
+touches the real community database.
 
 ## Deployment
 
