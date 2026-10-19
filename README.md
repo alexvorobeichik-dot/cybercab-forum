@@ -47,14 +47,14 @@ and the sitemap; defaults to `https://teslacybercabforum.com`).
   `rel=alternate` links so a reader finds them unaided, and replies carry
   anchors so a feed entry lands on the reply itself rather than the top of the
   thread
-- Two sourced reference pages, built to be cited rather than to be read once.
-  `/service-areas` lists every market where the robotaxi carries passengers,
-  which of them have Cybercab (currently one), and which are approved but not
-  launched. `/regulations` tracks the NHTSA audit of the Cybercab's
-  self-certification alongside the state-by-state picture. Every row carries a
-  named source and a test enforces that, because a single unsourced number would
-  undermine a page whose only purpose is to be trusted. Edit the tables in
-  `server.py` and bump `REFERENCE_UPDATED`, which is displayed on both pages
+- Two short Tesla-specific summaries, `/service-areas` and `/regulations`, which
+  deliberately defer to **driverlessmap.com** for the sourced, cross-operator
+  version. They began as full sourced tables; they are now brief summaries, and
+  the sourced tables were deleted from this repository. That is on purpose:
+  keeping a second copy of the same figures in two places guarantees the two
+  drift apart, and the sourced copy is the one worth maintaining. Tests assert
+  that both pages point at driverlessmap and that the sourced tables have not
+  crept back in
 - Server-rendered pages, so threads are readable by search engines
 - No fabricated members, posts or activity
 

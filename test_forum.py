@@ -564,18 +564,19 @@ class ForumTests(unittest.TestCase):
     # ------------------------------------------------------------------
     # reference pages
     # ------------------------------------------------------------------
-    def test_service_areas_page_lists_every_market(self):
+    def test_service_areas_page_lists_every_tesla_market(self):
         status, _, body = self.client().get('/service-areas')
         self.assertEqual(status, 200)
-        self.assertIn('Where the Tesla robotaxi runs', body)
         for market in ('Austin', 'Dallas', 'Houston', 'Miami', 'Orlando', 'Tampa', 'Bay Area'):
             with self.subTest(market=market):
                 self.assertIn(market, body)
         self.assertIn('Live since 3 Sep 2026', body, 'Austin is the only Cybercab market')
-        # announced markets belong in their own table, not mixed in with live ones
-        self.assertIn('Las Vegas', body)
-        self.assertIn('Phoenix', body)
-        self.assertIn('Approved or preparing', body)
+        self.assertIn('driverlessmap.com', body,
+                      'the page must point at the version that is kept current')
+        # The sourced tables moved to driverlessmap.com. If they creep back in
+        # here there are two copies to maintain, which is the drift this avoided.
+        self.assertNotIn('Las Vegas', body)
+        self.assertNotIn('Approved or preparing', body)
 
     def test_service_areas_page_charts_the_registration_data(self):
         _, _, body = self.client().get('/service-areas')
@@ -587,14 +588,15 @@ class ForumTests(unittest.TestCase):
                 self.assertIn(label, body)
                 self.assertIn(f'>{value}<', body)
 
-    def test_regulations_page_lists_every_jurisdiction(self):
+    def test_regulations_page_points_at_the_sourced_version(self):
         status, _, body = self.client().get('/regulations')
         self.assertEqual(status, 200)
-        for place in ('United States (federal)', 'Texas', 'Florida', 'Nevada',
-                      'Arizona', 'California'):
+        for place in ('United States, federal', 'Texas', 'California',
+                      'Nevada and Arizona', 'Florida'):
             with self.subTest(place=place):
                 self.assertIn(place, body)
         self.assertIn('AQ26002', body, 'the audit query identifier is the point of the page')
+        self.assertIn('driverlessmap.com/regulations', body)
 
     def test_reference_pages_are_metadata_complete_and_discoverable(self):
         for path in ('/service-areas', '/regulations'):
@@ -602,7 +604,6 @@ class ForumTests(unittest.TestCase):
                 _, _, body = self.client().get(path)
                 self.assertIn(f'<link rel="canonical" href="{server.SITE_URL}{path}">', body)
                 self.assertIn('<meta property="og:type" content="website">', body)
-                self.assertIn('Last checked ', body)
         _, _, page = self.client().get('/')
         self.assertIn('href="/service-areas"', page)
         self.assertIn('href="/regulations"', page)
@@ -610,15 +611,15 @@ class ForumTests(unittest.TestCase):
         self.assertIn(server.SITE_URL + '/service-areas', sitemap)
         self.assertIn(server.SITE_URL + '/regulations', sitemap)
 
-    def test_every_reference_claim_carries_a_source(self):
-        # The whole point of these pages is that they can be cited. A row
-        # without a working source link is a bug, not a formatting choice.
-        for group in (server.SERVICE_AREAS, server.PLANNED_MARKETS, server.REGULATIONS):
-            for row in group:
-                with self.subTest(row=row.get('city') or row.get('jurisdiction')):
-                    self.assertTrue(row.get('source', '').startswith('https://'),
-                                    'every row needs a source URL')
-                    self.assertTrue(row.get('source_name'), 'and a named source')
+    def test_remaining_reference_rows_still_carry_a_source(self):
+        # The sourced tables for other operators moved to driverlessmap.com. What
+        # is left here is Tesla's own market list, and it still has to be
+        # traceable to a named source even though the page no longer prints them.
+        for row in server.SERVICE_AREAS:
+            with self.subTest(row=row['city']):
+                self.assertTrue(row.get('source', '').startswith('https://'),
+                                'every row needs a source URL')
+                self.assertTrue(row.get('source_name'), 'and a named source')
 
     def test_unknown_routes_return_404(self):
         client = self.client()

@@ -45,34 +45,6 @@ SERVICE_AREAS=[
   'note':'Runs with a human monitor because Tesla holds no driverless permit in California. This is not unsupervised service and should not be counted as such.',
   'source_name':'Electrek, CPUC','source':'https://electrek.co/2026/03/25/california-regulator-confirms-tesla-not-operating-autonomous-vehicle-service/'},
 ]
-PLANNED_MARKETS=[
- {'city':'Las Vegas','state':'NV','status':'Approved, not launched',
-  'note':'Nevada approved up to 5,000 autonomous vehicles in Clark County on 20 August 2026, conditional on service starting within 120 days. Airport service needs separate approval.',
-  'source_name':'Nevada B&I','source':'https://www.business.nv.gov/news-media/press-releases/2026/ntata/nevada-transportation-authority-approves-autonomous-vehicle-network-applications-for-tesla-waymo-and-aviari/'},
- {'city':'Phoenix','state':'AZ','status':'Preparations underway',
-  'note':'Tesla has held an Arizona ride-hailing permit since 17 November 2025, which allows charging for rides. Driverless operation needs separate certification, and no approval has been confirmed.',
-  'source_name':'TechCrunch','source':'https://techcrunch.com/2025/11/18/tesla-receives-ride-hailing-permit-in-arizona-in-last-required-step-to-launch-robotaxi-service/'},
-]
-REGULATIONS=[
- {'jurisdiction':'United States (federal)','status':'Audit query open',
-  'detail':"NHTSA opened Audit Query AQ26002 on 3 September 2026, the day Tesla began commercial Cybercab service in Austin. It examines the basis on which Tesla self-certified the Cybercab as meeting all applicable Federal Motor Vehicle Safety Standards, including how far that certification rested on treating certain standards as inapplicable to a vehicle with no brake pedal, no accelerator, no steering wheel and no mirrors. A special order followed on 10 September, and the deadline for answers is 30 October, extended after Tesla asked for 20 November.",
-  'source_name':'NHTSA','source':'https://www.nhtsa.gov/press-releases/investigation-tesla-cybercab-self-certification'},
- {'jurisdiction':'Texas','status':'Operating',
-  'detail':'Commercially operated automated vehicles need a permit under SB 2807, in force since 2025. Texas DMV registrations are public, which is where most reliable fleet counts come from while operators decline to publish them.',
-  'source_name':'Texas AV Tracker','source':'https://texasavtracker.com/tesla'},
- {'jurisdiction':'Florida','status':'Operating',
-  'detail':'Unsupervised service in Miami, Orlando and Tampa since July 2026. We have found no Florida-specific permit in the available sources, which is itself worth knowing.',
-  'source_name':'Tesla Q2 2026 filing','source':'https://assets-ir.tesla.com/tesla-contents/IR/TSLA-Q2-2026-Update.pdf'},
- {'jurisdiction':'Nevada','status':'Approved',
-  'detail':'AV network approval granted on 20 August 2026 for up to 5,000 vehicles in Clark County in the first 12 months, conditional on starting within 120 days of issue.',
-  'source_name':'Nevada B&I','source':'https://www.business.nv.gov/news-media/press-releases/2026/ntata/nevada-transportation-authority-approves-autonomous-vehicle-network-applications-for-tesla-waymo-and-aviari/'},
- {'jurisdiction':'Arizona','status':'Partial',
-  'detail':'A ride-hailing permit held since 17 November 2025 lets Tesla charge for rides statewide. Driverless operation requires separate certification and no confirmation of it has been found.',
-  'source_name':'TechCrunch','source':'https://techcrunch.com/2025/11/18/tesla-receives-ride-hailing-permit-in-arizona-in-last-required-step-to-launch-robotaxi-service/'},
- {'jurisdiction':'California','status':'No driverless permit',
-  'detail':'Tesla holds only a CPUC charter-party permit, which covers a human-driven service, and a DMV testing permit that requires a driver present. The CPUC said in March 2026 that Tesla is not operating an autonomous vehicle service. Bay Area rides run with a safety monitor aboard.',
-  'source_name':'Electrek, CPUC','source':'https://electrek.co/2026/03/25/california-regulator-confirms-tesla-not-operating-autonomous-vehicle-service/'},
-]
 # ---------------------------------------------------------------------------
 def bar_chart(series,label):
  # Inline SVG, drawn from the same table the page shows rather than from a
@@ -326,28 +298,34 @@ class Handler(BaseHTTPRequestHandler):
      +self.form(u,f'/edit/{parts[2]}/{item_id}',fields,'Save changes')
      +'</section>')
    elif path=='/service-areas':
-    title='Where the Tesla robotaxi runs'; canonical_path='/service-areas'
-    description='Which markets the Tesla robotaxi service actually carries passengers in, which of them have Cybercab, and what is next.'
-    rows=[[('<b>'+esc(m['city'])+'</b><br>'+esc(m['state'])),esc(m['since']),esc(m['mode']),('<b>'+esc(m['cybercab'])+'</b>') if m['cybercab'] else 'Not yet',esc(m['note'])+' <a href="'+esc(m['source'])+'">'+esc(m['source_name'])+'</a>'] for m in SERVICE_AREAS]
-    planned=[[('<b>'+esc(m['city'])+'</b><br>'+esc(m['state'])),esc(m['status']),esc(m['note'])+' <a href="'+esc(m['source'])+'">'+esc(m['source_name'])+'</a>'] for m in PLANNED_MARKETS]
-    content=('<a href="/">← All discussions</a><section class="panel"><h1>Where the Tesla robotaxi runs</h1>'
-     +'<p>Robotaxi is the service. Cybercab is the purpose-built two-seater, and it is not where most of the service is. This table is what is carrying passengers now rather than what has been announced.</p>'
-     +ref_table(['Market','Robotaxi since','Mode','Cybercab','Notes'],rows)
-     +'<h2>Cybercabs registered in Texas</h2>'
+    title="Where Tesla's robotaxi runs"; canonical_path='/service-areas'
+    description="A short summary of where Tesla runs its robotaxi and where the Cybercab actually carries passengers."
+    rows=[[('<b>'+esc(m['city'])+'</b><br>'+esc(m['state'])),esc(m['mode']),('<b>'+esc(m['cybercab'])+'</b>') if m['cybercab'] else 'Not yet'] for m in SERVICE_AREAS]
+    content=('<a href="/">← All discussions</a><section class="panel"><h1>Where Tesla&#39;s robotaxi runs</h1>'
+     +'<p>Tesla carries passengers in six markets. Only one of them has the Cybercab, which is the distinction most coverage blurs.</p>'
+     +ref_table(['Market','Mode','Cybercab'],rows)
      +bar_chart(CYBERCAB_REGISTRATIONS,'Cybercabs registered for commercial use in Texas, 45 at launch rising to 319 in six weeks')
-     +'<p class="meta">Texas DMV registrations, the only independent count available while Tesla does not publish one. At launch it was 45.</p>'
-     +'<h2>Approved or preparing, not yet carrying passengers</h2>'
-     +ref_table(['Market','Status','Notes'],planned)
-     +'<p class="meta">Last checked '+esc(REFERENCE_UPDATED)+'. Fleet numbers come from state registrations where they exist, because operators do not publish them consistently. Corrections welcome in the forum.</p>'
+     +'<p class="meta">319 Cybercabs and 420 Model Y robotaxis registered in Texas on 12 October 2026, from the state registry. Texas is the only place the fleet can be counted independently, because it publishes registrations and Tesla does not.</p>'
+     +'<h2>Why this page is short</h2>'
+     +'<p>The figure-by-figure version, with a source on every row and covering every operator rather than just Tesla, is maintained at <b>driverlessmap.com</b>. It lives in one place deliberately: two copies of the same numbers drift apart, and the sourced one is the one worth keeping current.</p>'
+     +'<p class="meta">Discussion of any of it belongs in <a href="/?category=Cities%20%26%20regulations">Cities &amp; regulations</a>.</p>'
      +'</section>')
    elif path=='/regulations':
-    title='Robotaxi regulation tracker'; canonical_path='/regulations'
-    description="The rules Tesla's robotaxi service operates under, state by state, and the federal audit of the Cybercab's self-certification."
-    rows=[[('<b>'+esc(r['jurisdiction'])+'</b>'),esc(r['status']),esc(r['detail'])+' <a href="'+esc(r['source'])+'">'+esc(r['source_name'])+'</a>'] for r in REGULATIONS]
-    content=('<a href="/">← All discussions</a><section class="panel"><h1>The rules the robotaxi runs under</h1>'
-     +'<p>The Cybercab has no steering wheel, no pedals and no mirrors, which is not the shape the Federal Motor Vehicle Safety Standards were written around. That mismatch is the substance of the federal entry below, and it is why the state picture is so uneven.</p>'
-     +ref_table(['Jurisdiction','Status','What is happening'],rows)
-     +'<p class="meta">Last checked '+esc(REFERENCE_UPDATED)+'. A summary for readers, not legal advice. Where a filing exists, follow the source rather than this page.</p>'
+    title='Tesla and robotaxi regulation'; canonical_path='/regulations'
+    description="Where Tesla stands on robotaxi regulation, in brief, and where the sourced version lives."
+    rows=[
+     ['<b>United States, federal</b>','NHTSA opened Audit Query AQ26002 on 3 September 2026, the day commercial Cybercab service began in Austin, examining the basis on which Tesla self-certified a vehicle with no pedals, no steering wheel and no mirrors. Answers were due 30 October.'],
+     ['<b>Texas</b>','Permits under SB 2807. Registrations are public, which makes Texas the only state where a fleet can be counted independently of the operator.'],
+     ['<b>California</b>','No driverless permit. Tesla holds a charter-party permit covering a human-driven service and a testing permit that requires a driver present. The Bay Area service runs with a safety monitor aboard, and the CPUC said in March 2026 that Tesla is not operating an autonomous vehicle service.'],
+     ['<b>Nevada and Arizona</b>','Approved or permitted, not yet carrying Cybercab passengers.'],
+     ['<b>Florida</b>','Three markets operating with no state-specific permit found in any source, which is itself worth knowing.'],
+    ]
+    content=('<a href="/">← All discussions</a><section class="panel"><h1>Where Tesla stands</h1>'
+     +'<p>One live federal action, and a state picture that is patchy rather than settled. The reason is structural: a vehicle with no steering wheel is not a shape the Federal Motor Vehicle Safety Standards were written around.</p>'
+     +ref_table(['Where','What is happening'],rows)
+     +'<h2>Why this page is short</h2>'
+     +'<p>The full field &mdash; including the other route a vehicle like this can take, the Part 555 exemption NHTSA granted for a purpose-built robotaxi &mdash; is maintained with sources at <b>driverlessmap.com/regulations</b>. Keeping the sourced version in one place means these two pages cannot disagree with each other.</p>'
+     +'<p class="meta">A summary for readers, not legal advice. Where a filing exists, follow the filing rather than either site.</p>'
      +'</section>')
    elif path=='/account':
     if not u:self.send(303,'',location='/login');return
